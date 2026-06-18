@@ -148,8 +148,13 @@ async fn test_duplicate_claim() {
 
     setup.context.process_transaction(&[claim_reward_ix.clone()], &[&setup.miner]).await.unwrap();
 
-    // Second claim should fail
-    let result = setup.context.process_transaction(&[claim_reward_ix], &[&setup.miner]).await;
+    // Second claim should fail (with a unique instruction to avoid tx cache hit)
+    let dummy_ix = solana_sdk::system_instruction::transfer(
+        &setup.context.payer.pubkey(),
+        &Pubkey::new_unique(),
+        0,
+    );
+    let result = setup.context.process_transaction(&[claim_reward_ix, dummy_ix], &[&setup.miner]).await;
     assert!(result.is_err());
 }
 
