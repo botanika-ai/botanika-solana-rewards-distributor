@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::{InstructionData, ToAccountMetas};
 use anchor_lang::solana_program::keccak;
 use anchor_spl::token_interface;
 use solana_program_test::*;
@@ -6,9 +7,22 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
     instruction::Instruction,
+    system_program,
 };
 use solana_test::instructions::*;
 use solana_test::state::*;
+
+fn entry_wrapper(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> std::result::Result<(), solana_sdk::program_error::ProgramError> {
+    let coerced_accounts = unsafe {
+        std::mem::transmute::<&[AccountInfo], &[AccountInfo]>(accounts)
+    };
+    solana_test::entry(program_id, coerced_accounts, instruction_data)
+        .map_err(|e| e.into())
+}
 
 pub struct TestContext {
     pub banks_client: BanksClient,
@@ -23,11 +37,9 @@ impl TestContext {
         let mut program_test = ProgramTest::new(
             "solana_test",
             program_id,
-            processor!(solana_test::entry),
+            processor!(entry_wrapper),
         );
 
-        // Add SPL Token program
-        program_test.add_program("spl_token", anchor_spl::token::ID, None);
 
         let (banks_client, payer, recent_blockhash) = program_test.start().await;
 
@@ -46,7 +58,7 @@ impl TestContext {
             .unwrap()
     }
 
-    pub async fn process_transaction(&mut self, ixs: &[Instruction], signers: &[&Keypair]) -> Result<(), TransportError> {
+    pub async fn process_transaction(&mut self, ixs: &[Instruction], signers: &[&Keypair]) -> std::result::Result<(), BanksClientError> {
         let blockhash = self.get_latest_blockhash().await;
         let mut all_signers = vec![&self.payer];
         for s in signers {
@@ -63,7 +75,7 @@ impl TestContext {
         self.banks_client.process_transaction(tx).await
     }
 
-    pub async fn create_mint(&mut self, mint: &Keypair, authority: &Pubkey, decimals: u8) -> Result<(), TransportError> {
+    pub async fn create_mint(&mut self, mint: &Keypair, authority: &Pubkey, decimals: u8) -> std::result::Result<(), BanksClientError> {
         let rent = self.banks_client.get_rent().await.unwrap();
         let lamports = rent.minimum_balance(anchor_spl::token::Mint::LEN);
 
@@ -87,7 +99,7 @@ impl TestContext {
         self.process_transaction(&ixs, &[mint]).await
     }
 
-    pub async fn create_token_account(&mut self, account: &Keypair, mint: &Pubkey, owner: &Pubkey) -> Result<(), TransportError> {
+    pub async fn create_token_account(&mut self, account: &Keypair, mint: &Pubkey, owner: &Pubkey) -> std::result::Result<(), BanksClientError> {
         let rent = self.banks_client.get_rent().await.unwrap();
         let lamports = rent.minimum_balance(anchor_spl::token::TokenAccount::LEN);
 
@@ -110,7 +122,7 @@ impl TestContext {
         self.process_transaction(&ixs, &[account]).await
     }
 
-    pub async fn mint_to(&mut self, mint: &Pubkey, to: &Pubkey, authority: &Keypair, amount: u64) -> Result<(), TransportError> {
+    pub async fn mint_to(&mut self, mint: &Pubkey, to: &Pubkey, authority: &Keypair, amount: u64) -> std::result::Result<(), BanksClientError> {
         let ix = anchor_spl::token::spl_token::instruction::mint_to(
             &anchor_spl::token::ID,
             mint,
@@ -147,6 +159,13 @@ pub async fn setup_test() -> SetupResult {
 
     context.create_mint(&reward_mint, &context.payer.pubkey(), 9).await.unwrap();
 
+    let transfer_ix = solana_sdk::system_instruction::transfer(
+        &context.payer.pubkey(),
+        &miner.pubkey(),
+        10_000_000,
+    );
+    context.process_transaction(&[transfer_ix], &[]).await.unwrap();
+
     let (reward_distributor_pda, _) = Pubkey::find_program_address(
         &[RewardDistributor::SEED],
         &program_id,
@@ -172,8 +191,8 @@ pub async fn setup_test() -> SetupResult {
 
     context.process_transaction(&[initialize_ix], &[&token_vault]).await.unwrap();
 
-    context.create_token_account(&token_vault, &reward_mint.pubkey(), &reward_distributor_pda).await.unwrap();
-    context.mint_to(&reward_mint.pubkey(), &token_vault.pubkey(), &context.payer, 10000).await.unwrap();
+    let payer = Keypair::from_bytes(&context.payer.to_bytes()).unwrap();
+    context.mint_to(&reward_mint.pubkey(), &token_vault.pubkey(), &payer, 10000).await.unwrap();
     context.create_token_account(&miner_token_account, &reward_mint.pubkey(), &miner.pubkey()).await.unwrap();
 
     SetupResult {
