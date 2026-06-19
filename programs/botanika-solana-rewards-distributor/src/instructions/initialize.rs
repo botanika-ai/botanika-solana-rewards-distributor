@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::state::RewardDistributor;
+use crate::error::RewardError;
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -14,6 +15,9 @@ pub struct Initialize<'info> {
     )]
     pub reward_distributor: Account<'info, RewardDistributor>,
 
+    #[account(
+        constraint = reward_mint.decimals == 9 @ RewardError::InvalidDecimals
+    )]
     pub reward_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
