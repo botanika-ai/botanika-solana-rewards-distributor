@@ -7,6 +7,7 @@ use crate::state::{ClaimStatus, RewardDistributor};
 use crate::utils::merkle;
 
 #[derive(Accounts)]
+#[instruction(node_id_hash: [u8; 32])]
 pub struct ClaimReward<'info> {
     #[account(
         mut,
@@ -20,7 +21,11 @@ pub struct ClaimReward<'info> {
         init_if_needed,
         payer = miner,
         space = 8 + ClaimStatus::INIT_SPACE,
-        seeds = [ClaimStatus::SEED, miner.key().as_ref(), reward_distributor.key().as_ref()],
+        seeds = [
+            ClaimStatus::SEED,
+            &node_id_hash,
+            reward_distributor.key().as_ref(),
+        ],
         bump
     )]
     pub claim_status: Account<'info, ClaimStatus>,
@@ -52,51 +57,54 @@ pub struct ClaimReward<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn claim_reward_handler(ctx: Context<ClaimReward>, cumulative_amount: u64, proof: Vec<[u8; 32]>) -> Result<()> {
+pub fn claim_reward_handler(
+    ctx: Context<ClaimReward>,
+    node_id_hash: [u8; 32],
+    cumulative_amount: u64,
+    proof: Vec<[u8; 32]>,
+) -> Result<()> {
     let reward_distributor = &mut ctx.accounts.reward_distributor;
     let claim_status = &mut ctx.accounts.claim_status;
 
-    // Verify miner matches
-    if claim_status.miner == Pubkey::default() {
-        claim_status.miner = ctx.accounts.miner.key();
+    if claim_status.node_id_hash == [0u8; 32] {
+        claim_status.node_id_hash = node_id_hash;
         claim_status.bump = ctx.bumps.claim_status;
+    } else {
+        require!(
+            claim_status.node_id_hash == node_id_hash,
+            RewardError::InvalidNodeId
+        );
     }
 
-    // Check if already claimed this amount or more
     if claim_status.amount_claimed >= cumulative_amount {
         return Err(RewardError::AlreadyClaimed.into());
     }
 
-    // Verify Merkle proof
-    // Leaf = keccak256(miner_pubkey, cumulative_amount)
+    // Leaf = keccak256(miner_pubkey, node_id_hash, cumulative_amount)
     let leaf = keccak::hashv(&[
         ctx.accounts.miner.key().as_ref(),
+        &node_id_hash,
         &cumulative_amount.to_le_bytes(),
-    ]).0;
+    ])
+    .0;
 
     if !merkle::verify_proof(reward_distributor.current_root, leaf, proof) {
         return Err(RewardError::InvalidProof.into());
     }
 
-    // Calculate claimable amount
     let amount_to_claim = cumulative_amount
         .checked_sub(claim_status.amount_claimed)
         .ok_or(RewardError::Overflow)?;
 
-    // Update state
     claim_status.amount_claimed = cumulative_amount;
     claim_status.last_claim = Clock::get()?.unix_timestamp;
-    
+
     reward_distributor.total_distributed = reward_distributor
         .total_distributed
         .checked_add(amount_to_claim)
         .ok_or(RewardError::Overflow)?;
 
-    // Transfer tokens from vault to miner
-    let seeds = &[
-        RewardDistributor::SEED,
-        &[reward_distributor.bump],
-    ];
+    let seeds = &[RewardDistributor::SEED, &[reward_distributor.bump]];
     let signer_seeds = &[&seeds[..]];
 
     transfer_checked(
@@ -116,6 +124,7 @@ pub fn claim_reward_handler(ctx: Context<ClaimReward>, cumulative_amount: u64, p
 
     emit!(crate::events::RewardClaimed {
         miner: ctx.accounts.miner.key(),
+        node_id_hash,
         amount: amount_to_claim,
         cumulative_amount,
         timestamp: claim_status.last_claim,

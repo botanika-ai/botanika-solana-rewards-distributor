@@ -144,8 +144,10 @@ pub struct SetupResult {
     pub miner: Keypair,
     pub miner_token_account: Keypair,
     pub reward_distributor_pda: Pubkey,
-    pub claim_status_pda: Pubkey,
 }
+
+pub const TEST_NODE_ID: &str = "node-test-001";
+pub const TEST_NODE_ID_2: &str = "node-test-002";
 
 pub async fn setup_test() -> SetupResult {
     let mut context = TestContext::new().await;
@@ -168,11 +170,6 @@ pub async fn setup_test() -> SetupResult {
 
     let (reward_distributor_pda, _) = Pubkey::find_program_address(
         &[RewardDistributor::SEED],
-        &program_id,
-    );
-
-    let (claim_status_pda, _) = Pubkey::find_program_address(
-        &[ClaimStatus::SEED, miner.pubkey().as_ref(), reward_distributor_pda.as_ref()],
         &program_id,
     );
 
@@ -203,15 +200,36 @@ pub async fn setup_test() -> SetupResult {
         miner,
         miner_token_account,
         reward_distributor_pda,
-        claim_status_pda,
     }
 }
 
-pub fn compute_leaf(miner: Pubkey, amount: u64) -> [u8; 32] {
+pub fn hash_node_id(node_id: &str) -> [u8; 32] {
+    keccak::hash(node_id.as_bytes()).0
+}
+
+pub fn claim_status_pda(
+    node_id_hash: &[u8; 32],
+    reward_distributor: &Pubkey,
+    program_id: &Pubkey,
+) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            ClaimStatus::SEED,
+            node_id_hash,
+            reward_distributor.as_ref(),
+        ],
+        program_id,
+    )
+    .0
+}
+
+pub fn compute_leaf(miner: Pubkey, node_id_hash: [u8; 32], amount: u64) -> [u8; 32] {
     keccak::hashv(&[
         miner.as_ref(),
+        &node_id_hash,
         &amount.to_le_bytes(),
-    ]).0
+    ])
+    .0
 }
 
 pub fn compute_root(leaves: Vec<[u8; 32]>) -> [u8; 32] {

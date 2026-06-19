@@ -8,6 +8,8 @@ pub enum RewardError {
     Paused,
     #[msg("Invalid Merkle proof")]
     InvalidProof,
+    #[msg("Node ID does not match claim status")]
+    InvalidNodeId,
     #[msg("The amount has already been claimed")]
     AlreadyClaimed,
     #[msg("Invalid amount")]

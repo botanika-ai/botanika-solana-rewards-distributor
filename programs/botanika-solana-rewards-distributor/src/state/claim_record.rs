@@ -3,12 +3,10 @@ use anchor_lang::prelude::*;
 #[account]
 #[derive(InitSpace)]
 pub struct ClaimStatus {
-    pub miner: Pubkey,
+    pub node_id_hash: [u8; 32],
     pub amount_claimed: u64,
     pub last_claim: i64,
     pub bump: u8,
-    #[max_len(32)]
-    pub _reserved: [u8; 32],
 }
 
 impl ClaimStatus {
