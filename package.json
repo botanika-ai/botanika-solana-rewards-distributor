@@ -4,7 +4,7 @@
     "sync": "anchor keys sync",
     "build": "anchor build",
     "cli": "ts-node packages/cli/src/index.ts",
-    "test": "anchor test",
+    "test": "anchor test --validator legacy",
     "localnet": "solana-test-validator",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"

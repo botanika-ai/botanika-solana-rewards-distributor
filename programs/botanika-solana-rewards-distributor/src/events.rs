@@ -14,3 +14,12 @@ pub struct RewardClaimed {
     pub cumulative_amount: u64,
     pub timestamp: i64,
 }
+
+#[event]
+pub struct VaultWithdrawn {
+    pub authority: Pubkey,
+    pub treasury: Pubkey,
+    pub amount: u64,
+    pub remaining: u64,
+    pub timestamp: i64,
+}
