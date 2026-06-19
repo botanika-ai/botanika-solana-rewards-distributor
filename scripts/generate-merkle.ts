@@ -3,12 +3,16 @@ import { keccak_256 } from "@noble/hashes/sha3";
 import * as fs from "fs";
 import * as path from "path";
 
-// Leaf hashing matching the Rust contract: keccak256(miner_pubkey || amount_le)
-function hashLeaf(miner: PublicKey, cumulativeAmount: bigint): Buffer {
+function hashNodeId(nodeId: string): Buffer {
+  return Buffer.from(keccak_256(nodeId));
+}
+
+// Leaf hashing matching the Rust contract: keccak256(miner_pubkey || node_id_hash || amount_le)
+function hashLeaf(miner: PublicKey, nodeIdHash: Buffer, cumulativeAmount: bigint): Buffer {
   const minerBuffer = miner.toBuffer();
   const amountBuffer = Buffer.alloc(8);
   amountBuffer.writeBigUInt64LE(cumulativeAmount);
-  const data = Buffer.concat([minerBuffer, amountBuffer]);
+  const data = Buffer.concat([minerBuffer, nodeIdHash, amountBuffer]);
   return Buffer.from(keccak_256(data));
 }
 
@@ -108,26 +112,35 @@ async function main() {
     const wallet1 = config.MINER_1.publicKey;
     const wallet2 = config.MINER_2.publicKey;
 
-    // 2. Prepare sample rewards
+    // 2. Prepare sample rewards (one leaf per node)
     const rewards = [
-      { miner: wallet1, amount: 1000 },
-      { miner: wallet2, amount: 5000 }
+      { miner: wallet1, nodeId: "node-001", amount: 1000 },
+      { miner: wallet2, nodeId: "node-002", amount: 5000 },
+      { miner: wallet1, nodeId: "node-003", amount: 2500 },
     ];
 
     console.log("Sample Reward List:");
     console.log(JSON.stringify(rewards, null, 2));
 
     // 3. Compute leaves
-    const leaf1 = hashLeaf(new PublicKey(wallet1), BigInt(rewards[0].amount));
-    const leaf2 = hashLeaf(new PublicKey(wallet2), BigInt(rewards[1].amount));
+    const leaves = rewards.map((reward) => {
+      const nodeIdHash = hashNodeId(reward.nodeId);
+      return {
+        reward,
+        nodeIdHash,
+        leaf: hashLeaf(new PublicKey(reward.miner), nodeIdHash, BigInt(reward.amount)),
+      };
+    });
 
     // 4. Construct tree
-    const tree = new MerkleTree([leaf1, leaf2]);
+    const tree = new MerkleTree(leaves.map((entry) => entry.leaf));
     const root = tree.getRoot();
 
     // 5. Compute proofs
-    const proof1 = tree.getProof(leaf1).map(b => Array.from(b));
-    const proof2 = tree.getProof(leaf2).map(b => Array.from(b));
+    const proofs = leaves.map((entry) => ({
+      ...entry,
+      proof: tree.getProof(entry.leaf).map((b) => Array.from(b)),
+    }));
 
     // Output root as hex and as 32-byte array
     const rootHex = root.toString("hex");
@@ -137,8 +150,10 @@ async function main() {
     console.log(`MERKLE_ROOT = [${rootArray.join(", ")}]`);
     console.log(`(Hex: 0x${rootHex})`);
     console.log("\nPROOFS = {");
-    console.log(`  "${wallet1}": [${proof1.map(p => "[" + p.join(", ") + "]").join(", ")}],`);
-    console.log(`  "${wallet2}": [${proof2.map(p => "[" + p.join(", ") + "]").join(", ")}]`);
+    for (const entry of proofs) {
+      const key = `${entry.reward.miner}:${entry.reward.nodeId}`;
+      console.log(`  "${key}": [${entry.proof.map((p) => "[" + p.join(", ") + "]").join(", ")}],`);
+    }
     console.log("}");
     console.log("----------------------------------------\n");
 
@@ -147,11 +162,17 @@ async function main() {
     const outputData = {
       MERKLE_ROOT: rootArray,
       MERKLE_ROOT_HEX: rootHex,
-      PROOFS: {
-        [wallet1]: proof1,
-        [wallet2]: proof2
-      },
-      REWARDS: rewards
+      PROOFS: Object.fromEntries(
+        proofs.map((entry) => [
+          `${entry.reward.miner}:${entry.reward.nodeId}`,
+          {
+            nodeId: entry.reward.nodeId,
+            nodeIdHash: Array.from(entry.nodeIdHash),
+            proof: entry.proof,
+          },
+        ])
+      ),
+      REWARDS: rewards,
     };
     
     fs.writeFileSync(merkleOutputPath, JSON.stringify(outputData, null, 2));

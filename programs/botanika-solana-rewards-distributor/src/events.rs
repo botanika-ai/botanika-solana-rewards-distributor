@@ -10,6 +10,7 @@ pub struct RootUpdated {
 #[event]
 pub struct RewardClaimed {
     pub miner: Pubkey,
+    pub node_id_hash: [u8; 32],
     pub amount: u64,
     pub cumulative_amount: u64,
     pub timestamp: i64,
