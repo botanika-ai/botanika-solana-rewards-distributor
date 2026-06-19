@@ -41,4 +41,8 @@ pub mod botanika_solana_rewards_distributor {
     pub fn set_authority(ctx: Context<SetAuthority>, new_authority: Pubkey) -> Result<()> {
         set_authority_handler(ctx, new_authority)
     }
+
+    pub fn withdraw_vault(ctx: Context<WithdrawVault>, amount: u64) -> Result<()> {
+        withdraw_vault_handler(ctx, amount)
+    }
 }
