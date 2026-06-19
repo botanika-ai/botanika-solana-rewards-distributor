@@ -28,15 +28,21 @@ pub struct ClaimReward<'info> {
     #[account(
         mut,
         token::mint = reward_mint,
+        constraint = miner_token_account.owner == miner.key() @ RewardError::InvalidRecipient,
     )]
     pub miner_token_account: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
         mut,
-        address = reward_distributor.token_vault,
+        constraint = token_vault.key() == reward_distributor.token_vault @ RewardError::InvalidVault,
+        token::mint = reward_mint,
+        token::authority = reward_distributor,
     )]
     pub token_vault: InterfaceAccount<'info, TokenAccount>,
 
+    #[account(
+        constraint = reward_mint.key() == reward_distributor.reward_mint @ RewardError::InvalidMint,
+    )]
     pub reward_mint: InterfaceAccount<'info, Mint>,
 
     #[account(mut)]

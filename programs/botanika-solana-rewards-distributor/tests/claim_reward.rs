@@ -318,3 +318,87 @@ async fn test_wrong_mint_vault() {
     let result = setup.context.process_transaction(&[claim_reward_ix], &[&setup.miner]).await;
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn test_invalid_recipient_owner() {
+    let mut setup = setup_test().await;
+    let program_id = setup.context.program_id;
+
+    let amount = 1000u64;
+    let leaf = compute_leaf(setup.miner.pubkey(), amount);
+    let root = compute_root(vec![leaf]);
+
+    let update_root_ix = Instruction {
+        program_id,
+        accounts: solana_test::accounts::UpdateRoot {
+            reward_distributor: setup.reward_distributor_pda,
+            authority: setup.authority.pubkey(),
+        }.to_account_metas(None),
+        data: solana_test::instruction::UpdateRoot { new_root: root }.data(),
+    };
+
+    setup.context.process_transaction(&[update_root_ix], &[&setup.authority]).await.unwrap();
+
+    let proof = get_proof(vec![leaf], 0);
+
+    // Create a token account owned by some random keypair, not the miner
+    let random_owner = Keypair::new();
+    let wrong_token_account = Keypair::new();
+    setup.context.create_token_account(&wrong_token_account, &setup.reward_mint.pubkey(), &random_owner.pubkey()).await.unwrap();
+
+    let claim_reward_ix = Instruction {
+        program_id,
+        accounts: solana_test::accounts::ClaimReward {
+            reward_distributor: setup.reward_distributor_pda,
+            claim_status: setup.claim_status_pda,
+            miner_token_account: wrong_token_account.pubkey(),
+            token_vault: setup.token_vault.pubkey(),
+            reward_mint: setup.reward_mint.pubkey(),
+            miner: setup.miner.pubkey(),
+            token_program: anchor_spl::token::ID,
+            system_program: system_program::ID,
+        }.to_account_metas(None),
+        data: solana_test::instruction::ClaimReward {
+            cumulative_amount: amount,
+            proof,
+        }.data(),
+    };
+
+    let result = setup.context.process_transaction(&[claim_reward_ix], &[&setup.miner]).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_initialize_invalid_decimals() {
+    let mut context = TestContext::new().await;
+    let program_id = context.program_id;
+
+    let authority = Keypair::new();
+    let reward_mint = Keypair::new();
+    let token_vault = Keypair::new();
+
+    // Create mint with 6 decimals instead of 9
+    context.create_mint(&reward_mint, &context.payer.pubkey(), 6).await.unwrap();
+
+    let (reward_distributor_pda, _) = Pubkey::find_program_address(
+        &[RewardDistributor::SEED],
+        &program_id,
+    );
+
+    let initialize_ix = Instruction {
+        program_id,
+        accounts: solana_test::accounts::Initialize {
+            reward_distributor: reward_distributor_pda,
+            reward_mint: reward_mint.pubkey(),
+            token_vault: token_vault.pubkey(),
+            payer: context.payer.pubkey(),
+            token_program: anchor_spl::token::ID,
+            system_program: system_program::ID,
+        }.to_account_metas(None),
+        data: solana_test::instruction::Initialize { authority: authority.pubkey() }.data(),
+    };
+
+    let result = context.process_transaction(&[initialize_ix], &[&token_vault]).await;
+    assert!(result.is_err());
+}
+

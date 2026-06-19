@@ -16,4 +16,12 @@ pub enum RewardError {
     Overflow,
     #[msg("Insufficient vault balance")]
     InsufficientFunds,
+    #[msg("Invalid reward token decimals, expected 9")]
+    InvalidDecimals,
+    #[msg("Invalid recipient token account, must be owned by the miner")]
+    InvalidRecipient,
+    #[msg("Provided reward mint does not match configured mint")]
+    InvalidMint,
+    #[msg("Provided token vault does not match configured vault")]
+    InvalidVault,
 }
