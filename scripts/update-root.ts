@@ -4,6 +4,7 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { resolveClusterUrl } from "./utils";
 
 async function main() {
   console.log("Updating Merkle Root on-chain...");
@@ -33,7 +34,8 @@ async function main() {
     const walletKeypair = Keypair.fromSecretKey(Uint8Array.from(walletSecret));
 
     // 3. Setup Connection and Provider
-    const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+    const clusterUrl = config.CLUSTER_URL || resolveClusterUrl();
+    const connection = new Connection(clusterUrl, "confirmed");
     const wallet = new anchor.Wallet(walletKeypair);
     const provider = new anchor.AnchorProvider(connection, wallet, {
       commitment: "confirmed",
@@ -41,9 +43,10 @@ async function main() {
     anchor.setProvider(provider);
 
     // 4. Load Program
-    const programId = new PublicKey("J9gu41htkjXKAJxrmEfciYDPxPdP7xg8BV7sgNtaXdZs");
     const idlPath = path.resolve(__dirname, "../target/idl/botanika_solana_rewards_distributor.json");
     const idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
+    const programId = new PublicKey(config.PROGRAM_ID || idl.address || "4HfLqCMnNW4EPrLiDkwcEewCBaNMVWkKhShKe5rRwB8o");
+    idl.address = programId.toBase58();
     const program: any = new Program(idl as any, provider);
 
     // 5. Derive PDA

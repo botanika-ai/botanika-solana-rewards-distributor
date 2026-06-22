@@ -5,17 +5,23 @@ package_manager = "yarn"
 resolution = true
 skip-lint = false
 
+[build]
+optimize = true
+
 [programs.devnet]
 botanika_solana_rewards_distributor = "GPk4SPDWTZyNDHDc7E37qzGLiWFAoF3Q94Uvzp1rRZbB"
 
 [programs.localnet]
 botanika_solana_rewards_distributor = "EgXM56PxY7JNSDwwBu2S4LXQV8JMJaJcQq2KTJzg5RQg"
 
+[programs.testnet]
+botanika_solana_rewards_distributor = "4HfLqCMnNW4EPrLiDkwcEewCBaNMVWkKhShKe5rRwB8o"
+
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "testnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
