@@ -1,14 +1,33 @@
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { resolveClusterUrl } from "./utils";
 
 async function main() {
-  console.log("Creating SPL Token on Solana Devnet...");
+  const clusterUrl = resolveClusterUrl();
+  console.log(`Creating SPL Token on Solana (${clusterUrl})...`);
 
   try {
-    // 1. Create token mint
-    console.log("Running: spl-token create-token --url devnet");
-    const createTokenOut = execSync("spl-token create-token --url devnet").toString();
+    // Check if token already exists in config.json (useful for Mainnet)
+    const configPath = path.join(__dirname, "config.json");
+    let existingConfig: any = {};
+    if (fs.existsSync(configPath)) {
+      try {
+        existingConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      } catch (e) {}
+    }
+
+    if (existingConfig.TOKEN_MINT && existingConfig.ADMIN_TOKEN_ACCOUNT) {
+      console.log(`Using existing SPL Token Mint from config.json: ${existingConfig.TOKEN_MINT}`);
+      console.log(`Using existing Admin Token Account: ${existingConfig.ADMIN_TOKEN_ACCOUNT}`);
+      existingConfig.CLUSTER_URL = existingConfig.CLUSTER_URL || clusterUrl;
+      fs.writeFileSync(configPath, JSON.stringify(existingConfig, null, 2));
+      return;
+    }
+
+    // 1. Create token mint (decimals must be 9 for rewards distributor)
+    console.log(`Running: spl-token create-token --decimals 9 --url ${clusterUrl}`);
+    const createTokenOut = execSync(`spl-token create-token --decimals 9 --url ${clusterUrl}`).toString();
     console.log(createTokenOut);
     
     // Extract Token Address
@@ -19,8 +38,8 @@ async function main() {
     const tokenMint = tokenMintMatch[1];
 
     // 2. Create admin token account
-    console.log(`Running: spl-token create-account ${tokenMint} --url devnet`);
-    const createAccountOut = execSync(`spl-token create-account ${tokenMint} --url devnet`).toString();
+    console.log(`Running: spl-token create-account ${tokenMint} --url ${clusterUrl}`);
+    const createAccountOut = execSync(`spl-token create-account ${tokenMint} --url ${clusterUrl}`).toString();
     console.log(createAccountOut);
 
     // Extract Associated Token Account (ATA) Address
@@ -32,8 +51,8 @@ async function main() {
 
     // 3. Mint initial supply (e.g., 1,000,000 tokens)
     const initialSupply = 1000000;
-    console.log(`Running: spl-token mint ${tokenMint} ${initialSupply} --url devnet`);
-    const mintOut = execSync(`spl-token mint ${tokenMint} ${initialSupply} --url devnet`).toString();
+    console.log(`Running: spl-token mint ${tokenMint} ${initialSupply} --url ${clusterUrl}`);
+    const mintOut = execSync(`spl-token mint ${tokenMint} ${initialSupply} --url ${clusterUrl}`).toString();
     console.log(mintOut);
 
     // 4. Output the result in the requested format
@@ -46,6 +65,7 @@ async function main() {
     // 5. Save details to config.json
     const configPath = path.join(__dirname, "config.json");
     const config = {
+      CLUSTER_URL: clusterUrl,
       TOKEN_MINT: tokenMint,
       ADMIN_TOKEN_ACCOUNT: adminAta,
       INITIAL_SUPPLY: initialSupply

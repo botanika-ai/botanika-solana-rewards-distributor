@@ -8,7 +8,7 @@ pub mod utils;
 
 use instructions::*;
 
-declare_id!("EDCrG8YuKsNTHb4M28gC5whLiAaDcY6FnX9WCUSPvjGt");
+declare_id!("4HfLqCMnNW4EPrLiDkwcEewCBaNMVWkKhShKe5rRwB8o");
 
 #[program]
 pub mod botanika_solana_rewards_distributor {

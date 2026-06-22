@@ -3,6 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { Connection, PublicKey } from "@solana/web3.js";
 import * as fs from "fs";
 import * as path from "path";
+import { resolveClusterUrl } from "./utils";
 
 async function main() {
   try {
@@ -14,7 +15,8 @@ async function main() {
     const rewardDistributorPda = new PublicKey(config.REWARD_DISTRIBUTOR_PDA);
 
     // Setup Connection and read-only Provider
-    const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+    const clusterUrl = config.CLUSTER_URL || resolveClusterUrl();
+    const connection = new Connection(clusterUrl, "confirmed");
     const provider = new anchor.AnchorProvider(
       connection, 
       new anchor.Wallet(anchor.web3.Keypair.generate()), 
@@ -24,6 +26,8 @@ async function main() {
     // Load Program IDL
     const idlPath = path.resolve(__dirname, "../target/idl/botanika_solana_rewards_distributor.json");
     const idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
+    const programId = new PublicKey(config.PROGRAM_ID || idl.address || "4HfLqCMnNW4EPrLiDkwcEewCBaNMVWkKhShKe5rRwB8o");
+    idl.address = programId.toBase58();
     const program: any = new Program(idl as any, provider);
 
     // Fetch account state

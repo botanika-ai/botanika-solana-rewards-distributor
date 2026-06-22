@@ -3,6 +3,7 @@ import { getAccount, transfer } from "@solana/spl-token";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { resolveClusterUrl } from "./utils";
 
 async function main() {
   console.log("Transferring tokens to vault...");
@@ -23,7 +24,7 @@ async function main() {
     );
 
     // 3. Connection
-    const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+    const connection = new Connection(config.CLUSTER_URL || resolveClusterUrl(), "confirmed");
 
     // 4. Transfer tokens (e.g. 500,000 tokens)
     const amount = 500000;
