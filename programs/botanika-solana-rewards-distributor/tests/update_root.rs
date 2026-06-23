@@ -6,7 +6,7 @@ use solana_sdk::{
     signature::{Signer},
     instruction::Instruction,
 };
-use solana_test::state::*;
+use botanika_solana_rewards_distributor::state::*;
 
 mod utils;
 use utils::*;
@@ -19,11 +19,11 @@ async fn test_update_root() {
     let new_root = [1u8; 32];
     let update_root_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::UpdateRoot {
+        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
             reward_distributor: setup.reward_distributor_pda,
             authority: setup.authority.pubkey(),
         }.to_account_metas(None),
-        data: solana_test::instruction::UpdateRoot { new_root }.data(),
+        data: botanika_solana_rewards_distributor::instruction::UpdateRoot { new_root }.data(),
     };
 
     setup.context.process_transaction(&[update_root_ix], &[&setup.authority]).await.unwrap();

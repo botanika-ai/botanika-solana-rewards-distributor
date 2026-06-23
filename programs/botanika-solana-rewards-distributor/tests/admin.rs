@@ -7,7 +7,7 @@ use solana_sdk::{
     system_program,
     instruction::Instruction,
 };
-use solana_test::state::*;
+use botanika_solana_rewards_distributor::state::*;
 
 mod utils;
 use utils::*;
@@ -20,11 +20,11 @@ async fn test_set_authority() {
 
     let set_authority_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::SetAuthority {
+        accounts: botanika_solana_rewards_distributor::accounts::SetAuthority {
             reward_distributor: setup.reward_distributor_pda,
             authority: setup.authority.pubkey(),
         }.to_account_metas(None),
-        data: solana_test::instruction::SetAuthority { new_authority: new_authority.pubkey() }.data(),
+        data: botanika_solana_rewards_distributor::instruction::SetAuthority { new_authority: new_authority.pubkey() }.data(),
     };
 
     setup.context.process_transaction(&[set_authority_ix], &[&setup.authority]).await.unwrap();
@@ -43,11 +43,11 @@ async fn test_pause_unpause() {
     // 1. Pause
     let pause_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::Pause {
+        accounts: botanika_solana_rewards_distributor::accounts::Pause {
             reward_distributor: setup.reward_distributor_pda,
             authority: setup.authority.pubkey(),
         }.to_account_metas(None),
-        data: solana_test::instruction::Pause {}.data(),
+        data: botanika_solana_rewards_distributor::instruction::Pause {}.data(),
     };
     setup.context.process_transaction(&[pause_ix], &[&setup.authority]).await.unwrap();
 
@@ -58,11 +58,11 @@ async fn test_pause_unpause() {
     // 2. Unpause
     let unpause_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::Unpause {
+        accounts: botanika_solana_rewards_distributor::accounts::Unpause {
             reward_distributor: setup.reward_distributor_pda,
             authority: setup.authority.pubkey(),
         }.to_account_metas(None),
-        data: solana_test::instruction::Unpause {}.data(),
+        data: botanika_solana_rewards_distributor::instruction::Unpause {}.data(),
     };
     setup.context.process_transaction(&[unpause_ix], &[&setup.authority]).await.unwrap();
 
@@ -80,11 +80,11 @@ async fn test_authority_checks() {
     // 1. Try update_root with wrong authority
     let update_root_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::UpdateRoot {
+        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
             reward_distributor: setup.reward_distributor_pda,
             authority: wrong_authority.pubkey(),
         }.to_account_metas(None),
-        data: solana_test::instruction::UpdateRoot { new_root: [1u8; 32] }.data(),
+        data: botanika_solana_rewards_distributor::instruction::UpdateRoot { new_root: [1u8; 32] }.data(),
     };
     let result = setup.context.process_transaction(&[update_root_ix], &[&wrong_authority]).await;
     assert!(result.is_err());
@@ -106,7 +106,7 @@ async fn test_withdraw_vault_success() {
     // 1. Partial withdrawal: Withdraw 4000 out of 10000 tokens
     let withdraw_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::WithdrawVault {
+        accounts: botanika_solana_rewards_distributor::accounts::WithdrawVault {
             reward_distributor: setup.reward_distributor_pda,
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
@@ -114,7 +114,7 @@ async fn test_withdraw_vault_success() {
             authority: setup.authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
-        data: solana_test::instruction::WithdrawVault { amount: 4000 }.data(),
+        data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: 4000 }.data(),
     };
 
     setup.context.process_transaction(&[withdraw_ix], &[&setup.authority]).await.unwrap();
@@ -132,7 +132,7 @@ async fn test_withdraw_vault_success() {
     // 2. Full sweep: Withdraw u64::MAX (should withdraw all remaining 6000 tokens)
     let sweep_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::WithdrawVault {
+        accounts: botanika_solana_rewards_distributor::accounts::WithdrawVault {
             reward_distributor: setup.reward_distributor_pda,
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
@@ -140,7 +140,7 @@ async fn test_withdraw_vault_success() {
             authority: setup.authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
-        data: solana_test::instruction::WithdrawVault { amount: u64::MAX }.data(),
+        data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: u64::MAX }.data(),
     };
 
     setup.context.process_transaction(&[sweep_ix], &[&setup.authority]).await.unwrap();
@@ -171,7 +171,7 @@ async fn test_withdraw_vault_unauthorized() {
 
     let withdraw_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::WithdrawVault {
+        accounts: botanika_solana_rewards_distributor::accounts::WithdrawVault {
             reward_distributor: setup.reward_distributor_pda,
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
@@ -179,7 +179,7 @@ async fn test_withdraw_vault_unauthorized() {
             authority: wrong_authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
-        data: solana_test::instruction::WithdrawVault { amount: 1000 }.data(),
+        data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: 1000 }.data(),
     };
 
     let result = setup.context.process_transaction(&[withdraw_ix], &[&wrong_authority]).await;
@@ -200,7 +200,7 @@ async fn test_withdraw_vault_insufficient_funds() {
 
     let withdraw_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::WithdrawVault {
+        accounts: botanika_solana_rewards_distributor::accounts::WithdrawVault {
             reward_distributor: setup.reward_distributor_pda,
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
@@ -208,7 +208,7 @@ async fn test_withdraw_vault_insufficient_funds() {
             authority: setup.authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
-        data: solana_test::instruction::WithdrawVault { amount: 10001 }.data(), // 10000 in vault initially
+        data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: 10001 }.data(), // 10000 in vault initially
     };
 
     let result = setup.context.process_transaction(&[withdraw_ix], &[&setup.authority]).await;
@@ -229,7 +229,7 @@ async fn test_withdraw_vault_invalid_amount() {
 
     let withdraw_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::WithdrawVault {
+        accounts: botanika_solana_rewards_distributor::accounts::WithdrawVault {
             reward_distributor: setup.reward_distributor_pda,
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
@@ -237,7 +237,7 @@ async fn test_withdraw_vault_invalid_amount() {
             authority: setup.authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
-        data: solana_test::instruction::WithdrawVault { amount: 0 }.data(),
+        data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: 0 }.data(),
     };
 
     let result = setup.context.process_transaction(&[withdraw_ix], &[&setup.authority]).await;

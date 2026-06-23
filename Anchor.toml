@@ -5,9 +5,6 @@ package_manager = "yarn"
 resolution = true
 skip-lint = false
 
-[build]
-optimize = true
-
 [programs.devnet]
 botanika_solana_rewards_distributor = "GPk4SPDWTZyNDHDc7E37qzGLiWFAoF3Q94Uvzp1rRZbB"
 
@@ -15,10 +12,7 @@ botanika_solana_rewards_distributor = "GPk4SPDWTZyNDHDc7E37qzGLiWFAoF3Q94Uvzp1rR
 botanika_solana_rewards_distributor = "EgXM56PxY7JNSDwwBu2S4LXQV8JMJaJcQq2KTJzg5RQg"
 
 [programs.testnet]
-botanika_solana_rewards_distributor = "4HfLqCMnNW4EPrLiDkwcEewCBaNMVWkKhShKe5rRwB8o"
-
-[registry]
-url = "https://api.apr.dev"
+botanika_solana_rewards_distributor = "rwW2u8xGwcWHAiuFTnEPyyFmvP7X4e8B75arewK4qQS"
 
 [provider]
 cluster = "testnet"

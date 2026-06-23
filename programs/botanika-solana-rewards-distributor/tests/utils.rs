@@ -9,8 +9,8 @@ use solana_sdk::{
     instruction::Instruction,
     system_program,
 };
-use solana_test::instructions::*;
-use solana_test::state::*;
+use botanika_solana_rewards_distributor::instructions::*;
+use botanika_solana_rewards_distributor::state::*;
 
 fn entry_wrapper(
     program_id: &Pubkey,
@@ -20,7 +20,7 @@ fn entry_wrapper(
     let coerced_accounts = unsafe {
         std::mem::transmute::<&[AccountInfo], &[AccountInfo]>(accounts)
     };
-    solana_test::entry(program_id, coerced_accounts, instruction_data)
+    botanika_solana_rewards_distributor::entry(program_id, coerced_accounts, instruction_data)
         .map_err(|e| e.into())
 }
 
@@ -33,9 +33,9 @@ pub struct TestContext {
 
 impl TestContext {
     pub async fn new() -> Self {
-        let program_id = solana_test::ID;
+        let program_id = botanika_solana_rewards_distributor::ID;
         let mut program_test = ProgramTest::new(
-            "solana_test",
+            "botanika_solana_rewards_distributor",
             program_id,
             processor!(entry_wrapper),
         );
@@ -175,7 +175,7 @@ pub async fn setup_test() -> SetupResult {
 
     let initialize_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::Initialize {
+        accounts: botanika_solana_rewards_distributor::accounts::Initialize {
             reward_distributor: reward_distributor_pda,
             reward_mint: reward_mint.pubkey(),
             token_vault: token_vault.pubkey(),
@@ -183,7 +183,7 @@ pub async fn setup_test() -> SetupResult {
             token_program: anchor_spl::token::ID,
             system_program: system_program::ID,
         }.to_account_metas(None),
-        data: solana_test::instruction::Initialize { authority: authority.pubkey() }.data(),
+        data: botanika_solana_rewards_distributor::instruction::Initialize { authority: authority.pubkey() }.data(),
     };
 
     context.process_transaction(&[initialize_ix], &[&token_vault]).await.unwrap();

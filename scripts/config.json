@@ -1,4 +1,6 @@
 {
+  "CLUSTER_URL": "https://api.testnet.solana.com",
+  "PROGRAM_ID": "4HfLqCMnNW4EPrLiDkwcEewCBaNMVWkKhShKe5rRwB8o",
   "TOKEN_MINT": "BTLRHSFwwto5nC8niV5Jk6SMWTA6ZKjhiHfQn9dNf6EX",
   "ADMIN_TOKEN_ACCOUNT": "9qoU1yxJ6hkTv5CJ7id8oEYptYcmRNPhPk552zz6EYcY",
   "INITIAL_SUPPLY": 1000000
