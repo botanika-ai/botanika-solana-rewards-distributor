@@ -32,5 +32,5 @@ async fn test_update_root() {
     let account = setup.context.banks_client.get_account(setup.reward_distributor_pda).await.unwrap().unwrap();
     let data = RewardDistributor::try_deserialize(&mut account.data.as_slice()).unwrap();
     assert_eq!(data.current_root, new_root);
-    assert_eq!(data.root_version, 1);
+    assert_eq!(data.epoch_id, 1);
 }

@@ -42,7 +42,7 @@ pub fn initialize_handler(ctx: Context<Initialize>, authority: Pubkey) -> Result
     reward_distributor.token_vault = ctx.accounts.token_vault.key();
     reward_distributor.bump = ctx.bumps.reward_distributor;
     reward_distributor.current_root = [0u8; 32];
-    reward_distributor.root_version = 0;
+    reward_distributor.epoch_id = 0;
     reward_distributor.is_paused = false;
     reward_distributor.last_updated_at = Clock::get()?.unix_timestamp;
     reward_distributor.total_distributed = 0;

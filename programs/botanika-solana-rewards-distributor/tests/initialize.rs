@@ -50,6 +50,6 @@ async fn test_initialize() {
     assert_eq!(data.reward_mint, reward_mint.pubkey());
     assert_eq!(data.token_vault, token_vault.pubkey());
     assert_eq!(data.current_root, [0u8; 32]);
-    assert_eq!(data.root_version, 0);
+    assert_eq!(data.epoch_id, 0);
     assert_eq!(data.is_paused, false);
 }

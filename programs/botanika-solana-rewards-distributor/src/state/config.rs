@@ -6,7 +6,7 @@ pub struct RewardDistributor {
     pub authority: Pubkey,
     pub reward_mint: Pubkey,
     pub current_root: [u8; 32],
-    pub root_version: u64,
+    pub epoch_id: u64,
     pub token_vault: Pubkey,
     pub bump: u8,
     pub is_paused: bool,
