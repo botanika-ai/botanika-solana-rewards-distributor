@@ -1,12 +1,12 @@
 [package]
-name = "solana-test"
+name = "botanika-solana-rewards-distributor"
 version = "0.1.0"
 description = "Created with Anchor"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "solana_test"
+name = "botanika_solana_rewards_distributor"
 
 [features]
 default = []

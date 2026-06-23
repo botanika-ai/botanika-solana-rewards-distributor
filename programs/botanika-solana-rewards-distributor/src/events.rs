@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 pub struct RootUpdated {
     pub authority: Pubkey,
     pub new_root: [u8; 32],
-    pub root_version: u64,
+    pub epoch_id: u64,
 }
 
 #[event]
