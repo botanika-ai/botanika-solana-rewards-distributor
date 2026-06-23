@@ -8,7 +8,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     system_program,
 };
-use solana_test::state::*;
+use botanika_solana_rewards_distributor::state::*;
 
 mod utils;
 use utils::*;
@@ -16,12 +16,12 @@ use utils::*;
 fn update_root_ix(setup: &SetupResult, root: [u8; 32]) -> Instruction {
     Instruction {
         program_id: setup.context.program_id,
-        accounts: solana_test::accounts::UpdateRoot {
+        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
             reward_distributor: setup.reward_distributor_pda,
             authority: setup.authority.pubkey(),
         }
         .to_account_metas(None),
-        data: solana_test::instruction::UpdateRoot { new_root: root }.data(),
+        data: botanika_solana_rewards_distributor::instruction::UpdateRoot { new_root: root }.data(),
     }
 }
 
@@ -41,7 +41,7 @@ fn claim_reward_ix(
 
     Instruction {
         program_id: setup.context.program_id,
-        accounts: solana_test::accounts::ClaimReward {
+        accounts: botanika_solana_rewards_distributor::accounts::ClaimReward {
             reward_distributor: setup.reward_distributor_pda,
             claim_status,
             miner_token_account,
@@ -52,7 +52,7 @@ fn claim_reward_ix(
             system_program: system_program::ID,
         }
         .to_account_metas(None),
-        data: solana_test::instruction::ClaimReward {
+        data: botanika_solana_rewards_distributor::instruction::ClaimReward {
             node_id_hash,
             cumulative_amount,
             proof,
@@ -392,7 +392,7 @@ async fn test_wrong_mint_vault() {
 
     let claim_ix = Instruction {
         program_id: setup.context.program_id,
-        accounts: solana_test::accounts::ClaimReward {
+        accounts: botanika_solana_rewards_distributor::accounts::ClaimReward {
             reward_distributor: setup.reward_distributor_pda,
             claim_status,
             miner_token_account: setup.miner_token_account.pubkey(),
@@ -403,7 +403,7 @@ async fn test_wrong_mint_vault() {
             system_program: system_program::ID,
         }
         .to_account_metas(None),
-        data: solana_test::instruction::ClaimReward {
+        data: botanika_solana_rewards_distributor::instruction::ClaimReward {
             node_id_hash,
             cumulative_amount: amount,
             proof,
@@ -594,7 +594,7 @@ async fn test_initialize_invalid_decimals() {
 
     let initialize_ix = Instruction {
         program_id,
-        accounts: solana_test::accounts::Initialize {
+        accounts: botanika_solana_rewards_distributor::accounts::Initialize {
             reward_distributor: reward_distributor_pda,
             reward_mint: reward_mint.pubkey(),
             token_vault: token_vault.pubkey(),
@@ -603,7 +603,7 @@ async fn test_initialize_invalid_decimals() {
             system_program: system_program::ID,
         }
         .to_account_metas(None),
-        data: solana_test::instruction::Initialize {
+        data: botanika_solana_rewards_distributor::instruction::Initialize {
             authority: authority.pubkey(),
         }
         .data(),
