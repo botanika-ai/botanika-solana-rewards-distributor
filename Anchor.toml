@@ -12,7 +12,7 @@ botanika_solana_rewards_distributor = "GPk4SPDWTZyNDHDc7E37qzGLiWFAoF3Q94Uvzp1rR
 botanika_solana_rewards_distributor = "EgXM56PxY7JNSDwwBu2S4LXQV8JMJaJcQq2KTJzg5RQg"
 
 [programs.testnet]
-botanika_solana_rewards_distributor = "rwW2u8xGwcWHAiuFTnEPyyFmvP7X4e8B75arewK4qQS"
+botanika_solana_rewards_distributor = "EqMHRvRrD4v9L3Z5U2anSbNtmBujf3J8wHfYU7hCP4MJ"
 
 [provider]
 cluster = "testnet"
@@ -20,3 +20,5 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "cargo test --manifest-path programs/botanika-solana-rewards-distributor/Cargo.toml"
+
+[hooks]
