@@ -8,7 +8,7 @@ pub mod utils;
 
 use instructions::*;
 
-declare_id!("rwW2u8xGwcWHAiuFTnEPyyFmvP7X4e8B75arewK4qQS");
+declare_id!("Hm8wGfLJ7kyvtMwL62BtSxTzSzmkXXiwayS8AW2qjiNL");
 
 #[program]
 pub mod botanika_solana_rewards_distributor {
@@ -22,8 +22,8 @@ pub mod botanika_solana_rewards_distributor {
         update_root_handler(ctx, new_root)
     }
 
-    pub fn batch_payout(
-        ctx: Context<BatchPayout>,
+    pub fn batch_payout<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, BatchPayout<'info>>,
         batch_id: u64,
         payouts: Vec<PayoutItem>,
     ) -> Result<()> {

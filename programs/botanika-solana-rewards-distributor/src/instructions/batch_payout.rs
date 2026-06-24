@@ -52,8 +52,8 @@ pub struct BatchPayout<'info> {
 /// `remaining_accounts` layout (2 per payout item, in order):
 ///   [i*2]     = ClaimStatus PDA (writable) — may or may not exist yet
 ///   [i*2 + 1] = Recipient token account (writable)
-pub fn batch_payout_handler(
-    ctx: Context<BatchPayout>,
+pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
+    ctx: Context<'a, 'b, 'c, 'info, BatchPayout<'info>>,
     batch_id: u64,
     payouts: Vec<PayoutItem>,
 ) -> Result<()> {
