@@ -41,7 +41,7 @@ async function main() {
     console.log(`Token Vault:      ${state.tokenVault.toBase58()}`);
     console.log(`Current Root Hex: 0x${Buffer.from(state.currentRoot).toString("hex")}`);
     console.log(`Current Root Arr: [${state.currentRoot.join(", ")}]`);
-    console.log(`Root Version:     ${state.rootVersion.toString()}`);
+    console.log(`Epoch ID:         ${state.epochId.toString()}`);
     console.log(`Is Paused:        ${state.isPaused}`);
     console.log(`Total Distributed: ${state.totalDistributed.toString()}`);
     console.log("----------------------------------------\n");
