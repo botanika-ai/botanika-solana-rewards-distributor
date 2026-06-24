@@ -72,13 +72,13 @@ async function main() {
     console.log("----------------------------------------");
     console.log(`UPDATE_ROOT_TX = ${tx}`);
     console.log(`CURRENT_ROOT = [${accountState.currentRoot.join(", ")}]`);
-    console.log(`ROOT_VERSION = ${accountState.rootVersion.toString()}`);
+    console.log(`EPOCH_ID = ${accountState.epochId.toString()}`);
     console.log("----------------------------------------");
 
     // Save details to config
     config.UPDATE_ROOT_TX = tx;
     config.CURRENT_ROOT = accountState.currentRoot;
-    config.ROOT_VERSION = accountState.rootVersion.toNumber();
+    config.EPOCH_ID = accountState.epochId.toNumber();
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
   } catch (error) {
