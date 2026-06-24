@@ -24,3 +24,13 @@ pub struct VaultWithdrawn {
     pub remaining: u64,
     pub timestamp: i64,
 }
+
+#[event]
+pub struct PayoutProcessed {
+    pub batch_id: u64,
+    pub recipient: Pubkey,
+    pub node_id_hash: [u8; 32],
+    pub amount: u64,
+    pub cumulative_amount: u64,
+    pub timestamp: i64,
+}

@@ -26,4 +26,10 @@ pub enum RewardError {
     InvalidMint,
     #[msg("Provided token vault does not match configured vault")]
     InvalidVault,
+    #[msg("Batch exceeds maximum payout size or is empty")]
+    BatchTooLarge,
+    #[msg("Remaining accounts length mismatch (expected 2 * payouts.len())")]
+    InvalidRemainingAccounts,
+    #[msg("Invalid ClaimStatus PDA")]
+    InvalidClaimStatusPda,
 }

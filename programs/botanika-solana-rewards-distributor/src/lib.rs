@@ -22,13 +22,12 @@ pub mod botanika_solana_rewards_distributor {
         update_root_handler(ctx, new_root)
     }
 
-    pub fn claim_reward(
-        ctx: Context<ClaimReward>,
-        node_id_hash: [u8; 32],
-        cumulative_amount: u64,
-        proof: Vec<[u8; 32]>,
+    pub fn batch_payout(
+        ctx: Context<BatchPayout>,
+        batch_id: u64,
+        payouts: Vec<PayoutItem>,
     ) -> Result<()> {
-        claim_reward_handler(ctx, node_id_hash, cumulative_amount, proof)
+        batch_payout_handler(ctx, batch_id, payouts)
     }
 
     pub fn pause(ctx: Context<Pause>) -> Result<()> {
