@@ -19,7 +19,6 @@ pub struct PayoutItem {
 #[derive(Accounts)]
 pub struct BatchPayout<'info> {
     #[account(
-        mut,
         seeds = [RewardDistributor::SEED],
         bump = reward_distributor.bump,
         has_one = authority @ RewardError::Unauthorized,
@@ -66,7 +65,7 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
         RewardError::InvalidRemainingAccounts
     );
 
-    let reward_distributor = &mut ctx.accounts.reward_distributor;
+    let reward_distributor = &ctx.accounts.reward_distributor;
     let distributor_key = reward_distributor.key();
     let now = Clock::get()?.unix_timestamp;
 
@@ -190,11 +189,6 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
             ctx.accounts.reward_mint.decimals,
         )?;
 
-        // ── 4. Update distributor total ──
-        reward_distributor.total_distributed = reward_distributor
-            .total_distributed
-            .checked_add(item.amount)
-            .ok_or(RewardError::Overflow)?;
 
         // ── 5. Emit event ──
         let cumulative = if claim_status_data_len == 0 {
