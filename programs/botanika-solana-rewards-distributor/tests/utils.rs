@@ -161,12 +161,17 @@ pub async fn setup_test() -> SetupResult {
 
     context.create_mint(&reward_mint, &context.payer.pubkey(), 9).await.unwrap();
 
-    let transfer_ix = solana_sdk::system_instruction::transfer(
+    let transfer_ix_miner = solana_sdk::system_instruction::transfer(
         &context.payer.pubkey(),
         &miner.pubkey(),
         10_000_000,
     );
-    context.process_transaction(&[transfer_ix], &[]).await.unwrap();
+    let transfer_ix_auth = solana_sdk::system_instruction::transfer(
+        &context.payer.pubkey(),
+        &authority.pubkey(),
+        100_000_000, // 0.1 SOL
+    );
+    context.process_transaction(&[transfer_ix_miner, transfer_ix_auth], &[]).await.unwrap();
 
     let (reward_distributor_pda, _) = Pubkey::find_program_address(
         &[RewardDistributor::SEED],

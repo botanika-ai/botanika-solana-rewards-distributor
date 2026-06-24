@@ -126,22 +126,19 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
                 &[pda_signer_seeds],
             )?;
 
+            // Update the AccountInfo's data slice length in the BPF VM
+            claim_status_info.realloc(space, false)?;
+
             // Initialize the newly created account
-            let mut data = claim_status_info.try_borrow_mut_data()?;
-            let mut cursor = std::io::Cursor::new(&mut data[..]);
-
-            // Write discriminator (first 8 bytes)
-            let discriminator = ClaimStatus::DISCRIMINATOR;
-            anchor_lang::prelude::borsh::BorshSerialize::serialize(&discriminator, &mut cursor)?;
-
-            // Write fields
             let claim_status = ClaimStatus {
                 node_id_hash: item.node_id_hash,
                 amount_claimed: item.amount,
                 last_claim: now,
                 bump: pda_bump,
             };
-            anchor_lang::prelude::borsh::BorshSerialize::serialize(&claim_status, &mut cursor)?;
+            let mut data = claim_status_info.try_borrow_mut_data()?;
+            let mut writer = &mut data[..];
+            claim_status.try_serialize(&mut writer)?;
         } else {
             // Account exists — deserialize, update, reserialize
             let mut data = claim_status_info.try_borrow_mut_data()?;
@@ -170,12 +167,8 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
             claim_status.last_claim = now;
 
             // Reserialize
-            let mut cursor = std::io::Cursor::new(&mut data[..]);
-            anchor_lang::prelude::borsh::BorshSerialize::serialize(
-                &ClaimStatus::DISCRIMINATOR,
-                &mut cursor,
-            )?;
-            anchor_lang::prelude::borsh::BorshSerialize::serialize(&claim_status, &mut cursor)?;
+            let mut writer = &mut data[..];
+            claim_status.try_serialize(&mut writer)?;
         }
 
         // ── 3. Transfer tokens ──
