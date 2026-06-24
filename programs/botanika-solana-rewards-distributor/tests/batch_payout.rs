@@ -108,7 +108,7 @@ async fn test_batch_payout_success() {
     assert_eq!(claim_status_data.node_id_hash, node_id_hash);
     assert_eq!(claim_status_data.amount_claimed, 1000);
 
-    // Verify RewardDistributor state
+    // Verify RewardDistributor state (total_distributed is no longer updated on-chain to allow parallel payouts)
     let distributor_account = setup
         .context
         .banks_client
@@ -118,7 +118,7 @@ async fn test_batch_payout_success() {
         .unwrap();
     let distributor_data =
         RewardDistributor::try_deserialize(&mut distributor_account.data.as_slice()).unwrap();
-    assert_eq!(distributor_data.total_distributed, 1000);
+    assert_eq!(distributor_data.total_distributed, 0);
 }
 
 #[tokio::test]
