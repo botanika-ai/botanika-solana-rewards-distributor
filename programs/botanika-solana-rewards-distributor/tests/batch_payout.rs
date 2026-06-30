@@ -68,7 +68,7 @@ async fn test_batch_payout_success() {
     let payouts = vec![PayoutItem {
         recipient: recipient_token_account.pubkey(),
         node_id_hash,
-        amount,
+        cumulative_amount: amount,
     }];
 
     let ix = batch_payout_ix(&setup, 1, payouts);
@@ -150,12 +150,12 @@ async fn test_batch_payout_multiple_recipients() {
         PayoutItem {
             recipient: recipient_token_account_a.pubkey(),
             node_id_hash: node_a,
-            amount: amount_a,
+            cumulative_amount: amount_a,
         },
         PayoutItem {
             recipient: recipient_token_account_b.pubkey(),
             node_id_hash: node_b,
-            amount: amount_b,
+            cumulative_amount: amount_b,
         },
     ];
 
@@ -204,11 +204,11 @@ async fn test_batch_payout_cumulative() {
         .await
         .unwrap();
 
-    // First payout
+    // First payout (cumulative: 1000)
     let payouts_1 = vec![PayoutItem {
         recipient: recipient_token_account.pubkey(),
         node_id_hash,
-        amount: 1000u64,
+        cumulative_amount: 1000u64,
     }];
     let ix1 = batch_payout_ix(&setup, 1, payouts_1);
     setup
@@ -217,11 +217,11 @@ async fn test_batch_payout_cumulative() {
         .await
         .unwrap();
 
-    // Second payout for same node
+    // Second payout for same node (cumulative: 2500, should transfer 1500)
     let payouts_2 = vec![PayoutItem {
         recipient: recipient_token_account.pubkey(),
         node_id_hash,
-        amount: 1500u64,
+        cumulative_amount: 2500u64,
     }];
     let ix2 = batch_payout_ix(&setup, 2, payouts_2);
     setup
@@ -279,7 +279,7 @@ async fn test_batch_payout_too_large_fails() {
         payouts.push(PayoutItem {
             recipient: Pubkey::new_unique(),
             node_id_hash: [0u8; 32],
-            amount: 100,
+            cumulative_amount: 100,
         });
     }
     let ix = batch_payout_ix(&setup, 1, payouts);
@@ -298,7 +298,7 @@ async fn test_batch_payout_unauthorized_fails() {
     let payouts = vec![PayoutItem {
         recipient: Pubkey::new_unique(),
         node_id_hash: [0u8; 32],
-        amount: 100,
+        cumulative_amount: 100,
     }];
     
     let program_id = setup.context.program_id;
@@ -356,7 +356,7 @@ async fn test_batch_payout_paused_fails() {
     let payouts = vec![PayoutItem {
         recipient: Pubkey::new_unique(),
         node_id_hash: [0u8; 32],
-        amount: 100,
+        cumulative_amount: 100,
     }];
     let ix = batch_payout_ix(&setup, 1, payouts);
     let result = setup
@@ -364,4 +364,74 @@ async fn test_batch_payout_paused_fails() {
         .process_transaction(&[ix], &[&setup.authority])
         .await;
     assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_batch_payout_lower_cumulative_skipped() {
+    let mut setup = setup_test().await;
+    let node_id_hash = hash_node_id(TEST_NODE_ID);
+    
+    let recipient = Keypair::new();
+    let recipient_token_account = Keypair::new();
+    setup
+        .context
+        .create_token_account(&recipient_token_account, &setup.reward_mint.pubkey(), &recipient.pubkey())
+        .await
+        .unwrap();
+
+    // First payout (cumulative: 1000)
+    let payouts_1 = vec![PayoutItem {
+        recipient: recipient_token_account.pubkey(),
+        node_id_hash,
+        cumulative_amount: 1000u64,
+    }];
+    let ix1 = batch_payout_ix(&setup, 1, payouts_1);
+    setup
+        .context
+        .process_transaction(&[ix1], &[&setup.authority])
+        .await
+        .unwrap();
+
+    // Second payout with LOWER cumulative amount (cumulative: 800, should be skipped)
+    let payouts_2 = vec![PayoutItem {
+        recipient: recipient_token_account.pubkey(),
+        node_id_hash,
+        cumulative_amount: 800u64,
+    }];
+    let ix2 = batch_payout_ix(&setup, 2, payouts_2);
+    // Should process successfully without failing, but transfer 0 tokens
+    setup
+        .context
+        .process_transaction(&[ix2], &[&setup.authority])
+        .await
+        .unwrap();
+
+    // Verify recipient balance remains 1000
+    let recipient_ata = setup
+        .context
+        .banks_client
+        .get_account(recipient_token_account.pubkey())
+        .await
+        .unwrap()
+        .unwrap();
+    let recipient_ata_data =
+        anchor_spl::token::TokenAccount::try_deserialize(&mut recipient_ata.data.as_slice()).unwrap();
+    assert_eq!(recipient_ata_data.amount, 1000);
+
+    // Verify ClaimStatus PDA cumulative amount remains 1000 (not lowered to 800)
+    let claim_status_address = claim_status_pda(
+        &node_id_hash,
+        &setup.reward_distributor_pda,
+        &setup.context.program_id,
+    );
+    let claim_status_account = setup
+        .context
+        .banks_client
+        .get_account(claim_status_address)
+        .await
+        .unwrap()
+        .unwrap();
+    let claim_status_data =
+        ClaimStatus::try_deserialize(&mut claim_status_account.data.as_slice()).unwrap();
+    assert_eq!(claim_status_data.amount_claimed, 1000);
 }
