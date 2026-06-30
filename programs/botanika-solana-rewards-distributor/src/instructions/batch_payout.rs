@@ -13,7 +13,7 @@ pub const MAX_PAYOUTS_PER_TX: usize = 10;
 pub struct PayoutItem {
     pub recipient: Pubkey,
     pub node_id_hash: [u8; 32],
-    pub amount: u64,
+    pub cumulative_amount: u64,
 }
 
 #[derive(Accounts)]
@@ -74,7 +74,7 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
     let signer_seeds = &[&seeds[..]];
 
     for (i, item) in payouts.iter().enumerate() {
-        require!(item.amount > 0, RewardError::InvalidAmount);
+        require!(item.cumulative_amount > 0, RewardError::InvalidAmount);
 
         let claim_status_info = &ctx.remaining_accounts[i * 2];
         let recipient_token_info = &ctx.remaining_accounts[i * 2 + 1];
@@ -92,6 +92,8 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
             claim_status_info.key() == expected_pda,
             RewardError::InvalidClaimStatusPda
         );
+
+        let mut amount_to_transfer = 0u64;
 
         // ── 2. Init or load ClaimStatus ──
         let claim_status_data_len = claim_status_info.try_data_len()?;
@@ -131,13 +133,15 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
             // Initialize the newly created account
             let claim_status = ClaimStatus {
                 node_id_hash: item.node_id_hash,
-                amount_claimed: item.amount,
+                amount_claimed: item.cumulative_amount,
                 last_claim: now,
                 bump: pda_bump,
             };
             let mut data = claim_status_info.try_borrow_mut_data()?;
             let mut writer = &mut data[..];
             claim_status.try_serialize(&mut writer)?;
+
+            amount_to_transfer = item.cumulative_amount;
         } else {
             // Account exists — deserialize, update, reserialize
             let mut data = claim_status_info.try_borrow_mut_data()?;
@@ -159,53 +163,48 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
                 RewardError::InvalidNodeId
             );
 
-            claim_status.amount_claimed = claim_status
-                .amount_claimed
-                .checked_add(item.amount)
-                .ok_or(RewardError::Overflow)?;
-            claim_status.last_claim = now;
+            if item.cumulative_amount > claim_status.amount_claimed {
+                amount_to_transfer = item.cumulative_amount
+                    .checked_sub(claim_status.amount_claimed)
+                    .ok_or(RewardError::Overflow)?;
 
-            // Reserialize
-            let mut writer = &mut data[..];
-            claim_status.try_serialize(&mut writer)?;
+                claim_status.amount_claimed = item.cumulative_amount;
+                claim_status.last_claim = now;
+
+                // Reserialize
+                let mut writer = &mut data[..];
+                claim_status.try_serialize(&mut writer)?;
+            }
         }
 
         // ── 3. Transfer tokens ──
-        // We construct the CPI accounts manually since recipient is from remaining_accounts
-        let transfer_accounts = TransferChecked {
-            from: ctx.accounts.token_vault.to_account_info(),
-            mint: ctx.accounts.reward_mint.to_account_info(),
-            to: recipient_token_info.clone(),
-            authority: reward_distributor.to_account_info(),
-        };
+        if amount_to_transfer > 0 {
+            // We construct the CPI accounts manually since recipient is from remaining_accounts
+            let transfer_accounts = TransferChecked {
+                from: ctx.accounts.token_vault.to_account_info(),
+                mint: ctx.accounts.reward_mint.to_account_info(),
+                to: recipient_token_info.clone(),
+                authority: reward_distributor.to_account_info(),
+            };
 
-        transfer_checked(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                transfer_accounts,
-                signer_seeds,
-            ),
-            item.amount,
-            ctx.accounts.reward_mint.decimals,
-        )?;
-
+            transfer_checked(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    transfer_accounts,
+                    signer_seeds,
+                ),
+                amount_to_transfer,
+                ctx.accounts.reward_mint.decimals,
+            )?;
+        }
 
         // ── 5. Emit event ──
-        let cumulative = if claim_status_data_len == 0 {
-            item.amount
-        } else {
-            // Re-read for cumulative (we already wrote it above)
-            let data = claim_status_info.try_borrow_data()?;
-            let claim: ClaimStatus = ClaimStatus::try_deserialize(&mut &data[..])?;
-            claim.amount_claimed
-        };
-
         emit!(crate::events::PayoutProcessed {
             batch_id,
             recipient: item.recipient,
             node_id_hash: item.node_id_hash,
-            amount: item.amount,
-            cumulative_amount: cumulative,
+            amount: amount_to_transfer,
+            cumulative_amount: item.cumulative_amount,
             timestamp: now,
         });
     }
