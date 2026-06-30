@@ -62,8 +62,7 @@ async function main() {
     console.log(`INITIAL_SUPPLY = ${initialSupply}`);
     console.log("----------------------------------------");
 
-    // 5. Save details to config.json
-    const configPath = path.join(__dirname, "config.json");
+    // 5. Save details to config.json (reuse configPath from above)
     const config = {
       CLUSTER_URL: clusterUrl,
       TOKEN_MINT: tokenMint,
