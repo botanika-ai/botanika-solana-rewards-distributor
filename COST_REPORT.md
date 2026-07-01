@@ -15,8 +15,10 @@ Báo cáo chi tiết số dư và phân bổ chi phí thực tế thu thập t�
 | **Giai đoạn 1: Deploy Program (Triển khai Smart Contract)** | 9,000,000,000 lamports | 6,622,266,746 lamports | 2,377,733,254 lamports | 2.377733254 SOL |
 | **Giai đoạn 2: Tạo SPL Token (Mint + ATA + Mint Supply)** | 6,622,266,746 lamports | 6,618,745,866 lamports | 3,520,880 lamports | 0.003520880 SOL |
 | **Giai đoạn 3: Initialize Program (Khởi tạo Cấu hình & Vault)** | 6,618,745,866 lamports | 6,614,232,746 lamports | 4,513,120 lamports | 0.004513120 SOL |
-| **Giai đoạn 4: Chuyển Token vào Vault** | 6,614,232,746 lamports | 6,614,227,746 lamports | 5,000 lamports | 0.000005000 SOL |
-| **TỔNG CỘNG** | 9,000,000,000 lamports | 6,614,227,746 lamports | **2,385,772,254 lamports** | **2.385772254 SOL** |
+| **Giai đoạn 4: Chuyển Token vào Vault** | 6,614,232,746 lamports | 6,614,172,746 lamports | 60,000 lamports | 0.000060000 SOL |
+| **Giai đoạn 5: Phân phối Lần đầu** *(5 ví nhận mới tinh, tạo 5 ATA, 5 PDA)* | 6,614,172,746 lamports | 6,597,523,346 lamports | 16,649,400 lamports | 0.016649400 SOL |
+| **Giai đoạn 6: Phân phối Lần sau** *(Vẫn là 5 ví đó nhận thêm 1 lần)* | 6,597,523,346 lamports | 6,597,513,346 lamports | 10,000 lamports | 0.000010000 SOL |
+| **TỔNG CỘNG** | 9,000,000,000 lamports | 6,597,513,346 lamports | **2,402,486,654 lamports** | **2.402486654 SOL** |
 
 ---
 
@@ -63,12 +65,40 @@ Báo cáo chi tiết số dư và phân bổ chi phí thực tế thu thập t�
 
 ### Giai đoạn 4: Chuyển Token vào Vault
 
-- **Tổng chi phí:** `5,000 lamports` (0.000005000 SOL)
+- **Tổng chi phí:** `60,000 lamports` (0.000060000 SOL)
+*Lưu ý: Đã cộng gộp các giao dịch transfer token và update cài đặt ban đầu.*
 
 | Phân loại | Tài khoản / Mục đích | Kích thước | Chi phí (Lamports) | Chi phí (SOL) |
 | --- | --- | --- | --- | --- |
 | **Phí giao dịch (Tx Fee)** | Phí xử lý giao dịch transfer SPL token (1 chữ ký) | 1 TX | 5,000 | 0.000005000 SOL |
-| **Tổng cộng** |  |  | **5,000** | **0.000005000 SOL** |
+| **Phí giao dịch (Tx Fee)** | Phí các giao dịch bổ trợ cài đặt (phát sinh chênh lệch) | - | 55,000 | 0.000055000 SOL |
+| **Tổng cộng** |  |  | **60,000** | **0.000060000 SOL** |
+
+---
+
+### Giai đoạn 5: Phân phối Lần đầu (5 ví nhận mới tinh, tạo 5 ATA, 5 PDA)
+
+- **Tổng chi phí:** `16,649,400 lamports` (0.016649400 SOL)
+
+| Phân loại | Tài khoản / Mục đích | Kích thước / Số lượng | Chi phí (Lamports) | Chi phí (SOL) |
+| --- | --- | --- | --- | --- |
+| **Tiền thuê (Rent-exempt)** | Khởi tạo tài khoản ATA cho 5 ví nhận | 165 bytes × 5 ATA | 10,196,400 | 0.010196400 SOL |
+| **Tiền thuê (Rent-exempt)** | Khởi tạo tài khoản PDA `ClaimStatus` cho 5 ví nhận | 57 bytes × 5 PDA | 6,438,000 | 0.006438000 SOL |
+| **Phí giao dịch (Tx Fee)** | Phí xử lý 3 giao dịch (1 updateRoot, 1 tạo ATA tập trung, 1 chuyển batchPayout) | 3 giao dịch | 15,000 | 0.000015000 SOL |
+| **Tổng cộng** |  |  | **16,649,400** | **0.016649400 SOL** |
+
+---
+
+### Giai đoạn 6: Phân phối Lần sau (Vẫn là 5 ví đó nhận thêm 1 lần, 0 ATA mới, 0 PDA mới)
+
+- **Tổng chi phí:** `10,000 lamports` (0.000010000 SOL)
+
+| Phân loại | Tài khoản / Mục đích | Kích thước / Số lượng | Chi phí (Lamports) | Chi phí (SOL) |
+| --- | --- | --- | --- | --- |
+| **Tiền thuê (Rent-exempt)** | ATA đã tồn tại trên chuỗi | 0 | 0 | 0.000000000 SOL |
+| **Tiền thuê (Rent-exempt)** | PDA `ClaimStatus` đã tồn tại trên chuỗi | 0 | 0 | 0.000000000 SOL |
+| **Phí giao dịch (Tx Fee)** | Phí xử lý 2 giao dịch (1 updateRoot, 1 chuyển batchPayout cho 5 ví) | 2 giao dịch | 10,000 | 0.000010000 SOL |
+| **Tổng cộng** |  |  | **10,000** | **0.000010000 SOL** |
 
 ---
 
