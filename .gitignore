@@ -5,6 +5,14 @@ target
 node_modules
 test-ledger
 .yarn
+
+# Secrets (P0-SEC-01: previously committed, now rotated out of tracking --
+# see scripts/config.example.json for the expected shape of scripts/config.json)
+*-keypair.json
+authority-keypair.json
+botanika-solana-rewards-program.json
+scripts/config.json
+scripts/config.*.backup.json
 # Nestjs specific
 /dist
 /node_modules
