@@ -248,11 +248,12 @@ async function main() {
   const tokenVault = configAfterInit.TOKEN_VAULT;
   const rewardDistPda = configAfterInit.REWARD_DISTRIBUTOR_PDA;
 
-  // RewardDistributor PDA size calculation:
-  // Discriminator(8) + authority(32) + reward_mint(32) + current_root(32) + epoch_id(8) + token_vault(32) + bump(1) + is_paused(1) + last_updated_at(8) + total_distributed(8) + _reserved(4+64) = 8+32+32+32+8+32+1+1+8+8+4+64 = 230
-  // But anchor adds discriminator = 8 bytes, and the vec for _reserved has a 4-byte length prefix
-  // Let's calculate: 8 + 32 + 32 + 32 + 8 + 32 + 1 + 1 + 8 + 8 + (4 + 64) = 230 bytes
-  const rewardDistSize = 230; // approximate
+  // RewardDistributor PDA size calculation (post role-separation, P0-RWD-02):
+  // Discriminator(8) + 6 Pubkeys [admin/root/payout/pause/treasury_authority, reward_mint](32*6=192)
+  // + current_root(32) + epoch_id(8) + token_vault(32) + bump(1) + is_paused(1) + last_updated_at(8)
+  // + total_claimed(8) + total_batch_distributed(8) + _reserved(64, fixed-size array, no length prefix)
+  // = 8 + 192 + 32 + 8 + 32 + 1 + 1 + 8 + 8 + 8 + 64 = 362 bytes
+  const rewardDistSize = 362; // approximate
   const tokenVaultSize = 165; // SPL token account
 
   const rentVault = await getRentExemption(connection, tokenVaultSize);

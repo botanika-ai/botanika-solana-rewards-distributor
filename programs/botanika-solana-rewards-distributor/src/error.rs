@@ -32,4 +32,6 @@ pub enum RewardError {
     InvalidRemainingAccounts,
     #[msg("Invalid ClaimStatus PDA")]
     InvalidClaimStatusPda,
+    #[msg("Settlement epoch_from must be <= epoch_to")]
+    InvalidSettlementRange,
 }

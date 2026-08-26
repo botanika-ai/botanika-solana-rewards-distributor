@@ -10,7 +10,7 @@ pub struct WithdrawVault<'info> {
         mut,
         seeds = [RewardDistributor::SEED],
         bump = reward_distributor.bump,
-        has_one = authority @ RewardError::Unauthorized,
+        has_one = treasury_authority @ RewardError::Unauthorized,
     )]
     pub reward_distributor: Account<'info, RewardDistributor>,
 
@@ -33,7 +33,7 @@ pub struct WithdrawVault<'info> {
     )]
     pub treasury: InterfaceAccount<'info, TokenAccount>,
 
-    pub authority: Signer<'info>,
+    pub treasury_authority: Signer<'info>,
 
     pub token_program: Interface<'info, TokenInterface>,
 }
@@ -77,7 +77,7 @@ pub fn withdraw_vault_handler(ctx: Context<WithdrawVault>, amount: u64) -> Resul
     )?;
 
     emit!(crate::events::VaultWithdrawn {
-        authority: ctx.accounts.authority.key(),
+        authority: ctx.accounts.treasury_authority.key(),
         treasury: ctx.accounts.treasury.key(),
         amount: withdraw_amount,
         remaining: vault_balance.checked_sub(withdraw_amount).unwrap_or(0),

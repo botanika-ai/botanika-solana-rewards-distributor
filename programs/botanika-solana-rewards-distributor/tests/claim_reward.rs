@@ -8,22 +8,9 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     system_program,
 };
-use botanika_solana_rewards_distributor::state::*;
 
 mod utils;
 use utils::*;
-
-fn update_root_ix(setup: &SetupResult, root: [u8; 32]) -> Instruction {
-    Instruction {
-        program_id: setup.context.program_id,
-        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
-            reward_distributor: setup.reward_distributor_pda,
-            authority: setup.authority.pubkey(),
-        }
-        .to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::UpdateRoot { new_root: root }.data(),
-    }
-}
 
 fn claim_reward_ix(
     setup: &SetupResult,
@@ -66,12 +53,12 @@ async fn test_valid_claim() {
     let mut setup = setup_test().await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
-    let leaf = compute_leaf(setup.miner.pubkey(), node_id_hash, amount);
+    let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
         .await
         .unwrap();
 
@@ -108,12 +95,12 @@ async fn test_invalid_proof() {
     let mut setup = setup_test().await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
-    let leaf = compute_leaf(setup.miner.pubkey(), node_id_hash, amount);
+    let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
         .await
         .unwrap();
 
@@ -138,12 +125,12 @@ async fn test_duplicate_claim() {
     let mut setup = setup_test().await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
-    let leaf = compute_leaf(setup.miner.pubkey(), node_id_hash, amount);
+    let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
         .await
         .unwrap();
 
@@ -181,12 +168,12 @@ async fn test_claim_delta() {
     let node_id_hash = hash_node_id(TEST_NODE_ID);
 
     let amount1 = 1000u64;
-    let leaf1 = compute_leaf(setup.miner.pubkey(), node_id_hash, amount1);
+    let leaf1 = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount1);
     let root1 = compute_root(vec![leaf1]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root1)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root1, 1, dummy_settlement(1, 1, amount1))], &[&setup.authority])
         .await
         .unwrap();
 
@@ -206,12 +193,12 @@ async fn test_claim_delta() {
         .unwrap();
 
     let amount2 = 2500u64;
-    let leaf2 = compute_leaf(setup.miner.pubkey(), node_id_hash, amount2);
+    let leaf2 = compute_leaf(&setup, 2, setup.miner.pubkey(), node_id_hash, amount2);
     let root2 = compute_root(vec![leaf2]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root2)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root2, 2, dummy_settlement(2, 1, amount2))], &[&setup.authority])
         .await
         .unwrap();
 
@@ -250,15 +237,18 @@ async fn test_claim_two_nodes_same_miner() {
 
     let amount_a = 800u64;
     let amount_b = 1200u64;
-    let leaf_a = compute_leaf(setup.miner.pubkey(), node_a, amount_a);
-    let leaf_b = compute_leaf(setup.miner.pubkey(), node_b, amount_b);
+    let leaf_a = compute_leaf(&setup, 1, setup.miner.pubkey(), node_a, amount_a);
+    let leaf_b = compute_leaf(&setup, 1, setup.miner.pubkey(), node_b, amount_b);
     let mut leaves = vec![leaf_a, leaf_b];
     leaves.sort();
     let root = compute_root(leaves.clone());
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root)], &[&setup.authority])
+        .process_transaction(
+            &[update_root_ix(&setup, root, 1, dummy_settlement(1, 2, amount_a + amount_b))],
+            &[&setup.authority],
+        )
         .await
         .unwrap();
 
@@ -311,12 +301,12 @@ async fn test_wrong_node_id_hash() {
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let wrong_node_id_hash = hash_node_id("wrong-node");
     let amount = 1000u64;
-    let leaf = compute_leaf(setup.miner.pubkey(), node_id_hash, amount);
+    let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
         .await
         .unwrap();
 
@@ -341,12 +331,12 @@ async fn test_wrong_recipient() {
     let mut setup = setup_test().await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
-    let leaf = compute_leaf(setup.miner.pubkey(), node_id_hash, amount);
+    let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
         .await
         .unwrap();
 
@@ -381,7 +371,7 @@ async fn test_wrong_mint_vault() {
 
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
-    let leaf = compute_leaf(setup.miner.pubkey(), node_id_hash, amount);
+    let leaf = compute_leaf(&setup, 0, setup.miner.pubkey(), node_id_hash, amount);
     let proof = get_proof(vec![leaf], 0);
 
     let claim_status = claim_status_pda(
@@ -423,12 +413,12 @@ async fn test_invalid_recipient_owner() {
     let mut setup = setup_test().await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
-    let leaf = compute_leaf(setup.miner.pubkey(), node_id_hash, amount);
+    let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
         .await
         .unwrap();
 
@@ -491,12 +481,12 @@ async fn test_wallet_change_claims_delta_only() {
         .unwrap();
 
     let amount1 = 100u64;
-    let leaf1 = compute_leaf(first_miner.pubkey(), node_id_hash, amount1);
+    let leaf1 = compute_leaf(&setup, 1, first_miner.pubkey(), node_id_hash, amount1);
     let root1 = compute_root(vec![leaf1]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root1)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root1, 1, dummy_settlement(1, 1, amount1))], &[&setup.authority])
         .await
         .unwrap();
 
@@ -515,12 +505,12 @@ async fn test_wallet_change_claims_delta_only() {
         .unwrap();
 
     let amount2 = 110u64;
-    let leaf2 = compute_leaf(second_miner.pubkey(), node_id_hash, amount2);
+    let leaf2 = compute_leaf(&setup, 2, second_miner.pubkey(), node_id_hash, amount2);
     let root2 = compute_root(vec![leaf2]);
 
     setup
         .context
-        .process_transaction(&[update_root_ix(&setup, root2)], &[&setup.authority])
+        .process_transaction(&[update_root_ix(&setup, root2, 2, dummy_settlement(2, 1, amount2))], &[&setup.authority])
         .await
         .unwrap();
 

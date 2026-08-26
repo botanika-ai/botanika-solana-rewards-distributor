@@ -149,6 +149,19 @@ pub struct SetupResult {
 pub const TEST_NODE_ID: &str = "node-test-001";
 pub const TEST_NODE_ID_2: &str = "node-test-002";
 
+/// Every test binds all five roles (P0-RWD-02) to the same key by default so
+/// existing single-signer tests keep working; role-separation itself is
+/// covered explicitly in admin.rs.
+pub fn all_roles(authority: &Keypair) -> InitializeAuthorities {
+    InitializeAuthorities {
+        admin_authority: authority.pubkey(),
+        root_authority: authority.pubkey(),
+        payout_authority: authority.pubkey(),
+        pause_authority: authority.pubkey(),
+        treasury_authority: authority.pubkey(),
+    }
+}
+
 pub async fn setup_test() -> SetupResult {
     let mut context = TestContext::new().await;
     let program_id = context.program_id;
@@ -188,7 +201,9 @@ pub async fn setup_test() -> SetupResult {
             token_program: anchor_spl::token::ID,
             system_program: system_program::ID,
         }.to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::Initialize { authority: authority.pubkey() }.data(),
+        data: botanika_solana_rewards_distributor::instruction::Initialize {
+            authorities: all_roles(&authority),
+        }.data(),
     };
 
     context.process_transaction(&[initialize_ix], &[&token_vault]).await.unwrap();
@@ -228,8 +243,85 @@ pub fn claim_status_pda(
     .0
 }
 
-pub fn compute_leaf(miner: Pubkey, node_id_hash: [u8; 32], amount: u64) -> [u8; 32] {
+pub fn settlement_pda(
+    next_epoch_id: u64,
+    program_id: &Pubkey,
+) -> Pubkey {
+    Pubkey::find_program_address(
+        &[RewardSettlementState::SEED, &next_epoch_id.to_le_bytes()],
+        program_id,
+    )
+    .0
+}
+
+pub fn batch_record_pda(
+    batch_id: u64,
+    program_id: &Pubkey,
+) -> Pubkey {
+    Pubkey::find_program_address(
+        &[BatchRecord::SEED, &batch_id.to_le_bytes()],
+        program_id,
+    )
+    .0
+}
+
+/// Placeholder settlement metadata for tests that don't exercise the
+/// proof-linkage fields directly (P0-RWD-03).
+pub fn dummy_settlement(epoch: u64, leaf_count: u32, total_liability: u64) -> SettlementInput {
+    SettlementInput {
+        epoch_from: epoch,
+        epoch_to: epoch,
+        proof_commitment: [0u8; 32],
+        policy_hash: [0u8; 32],
+        canonical_ledger_hash: [0u8; 32],
+        revision_no: 0,
+        leaf_count,
+        total_liability,
+    }
+}
+
+/// Builds an update_root instruction, including the settlement PDA that is
+/// now required alongside every root publication.
+pub fn update_root_ix(
+    setup: &SetupResult,
+    root: [u8; 32],
+    next_epoch_id: u64,
+    settlement: SettlementInput,
+) -> Instruction {
+    Instruction {
+        program_id: setup.context.program_id,
+        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
+            reward_distributor: setup.reward_distributor_pda,
+            settlement: settlement_pda(next_epoch_id, &setup.context.program_id),
+            root_authority: setup.authority.pubkey(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+        data: botanika_solana_rewards_distributor::instruction::UpdateRoot {
+            new_root: root,
+            settlement,
+        }
+        .data(),
+    }
+}
+
+/// Leaf hash matching the on-chain domain-separated digest (P1-RWD-07):
+/// keccak256(domain || program_id || distributor || reward_mint || epoch_id || miner || node_id_hash || amount)
+pub const LEAF_DOMAIN: &[u8] = b"BOTANIKA_REWARD_LEAF_V1";
+
+pub fn compute_leaf(
+    setup: &SetupResult,
+    epoch_id: u64,
+    miner: Pubkey,
+    node_id_hash: [u8; 32],
+    amount: u64,
+) -> [u8; 32] {
     keccak::hashv(&[
+        LEAF_DOMAIN,
+        setup.context.program_id.as_ref(),
+        setup.reward_distributor_pda.as_ref(),
+        setup.reward_mint.pubkey().as_ref(),
+        &epoch_id.to_le_bytes(),
         miner.as_ref(),
         &node_id_hash,
         &amount.to_le_bytes(),
@@ -268,7 +360,7 @@ pub fn get_proof(leaves: Vec<[u8; 32]>, index: usize) -> Vec<[u8; 32]> {
     let mut proof = Vec::new();
     let mut current_level = leaves;
     let mut current_index = index;
-    
+
     while current_level.len() > 1 {
         let sibling_index = if current_index % 2 == 0 {
             current_index + 1

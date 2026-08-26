@@ -36,14 +36,19 @@ async function main() {
 
     console.log("\n----------------------------------------");
     console.log("REWARD DISTRIBUTOR STATE ON-CHAIN:");
-    console.log(`Authority:        ${state.authority.toBase58()}`);
+    console.log(`Admin Authority:    ${state.adminAuthority.toBase58()}`);
+    console.log(`Root Authority:     ${state.rootAuthority.toBase58()}`);
+    console.log(`Payout Authority:   ${state.payoutAuthority.toBase58()}`);
+    console.log(`Pause Authority:    ${state.pauseAuthority.toBase58()}`);
+    console.log(`Treasury Authority: ${state.treasuryAuthority.toBase58()}`);
     console.log(`Reward Mint:      ${state.rewardMint.toBase58()}`);
     console.log(`Token Vault:      ${state.tokenVault.toBase58()}`);
     console.log(`Current Root Hex: 0x${Buffer.from(state.currentRoot).toString("hex")}`);
     console.log(`Current Root Arr: [${state.currentRoot.join(", ")}]`);
     console.log(`Epoch ID:         ${state.epochId.toString()}`);
     console.log(`Is Paused:        ${state.isPaused}`);
-    console.log(`Total Distributed: ${state.totalDistributed.toString()}`);
+    console.log(`Total Claimed (self-serve): ${state.totalClaimed.toString()}`);
+    console.log(`Total Batch Distributed:    ${state.totalBatchDistributed.toString()}`);
     console.log("----------------------------------------\n");
 
   } catch (error) {

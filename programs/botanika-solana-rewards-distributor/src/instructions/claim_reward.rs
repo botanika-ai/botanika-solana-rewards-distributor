@@ -6,6 +6,12 @@ use crate::error::RewardError;
 use crate::state::{ClaimStatus, RewardDistributor};
 use crate::utils::merkle;
 
+/// Domain separation tag for reward Merkle leaves (P1-RWD-07). Leaves are
+/// additionally bound to program_id, distributor PDA, reward_mint and
+/// epoch_id so a leaf/proof cannot be replayed across distributors,
+/// clusters, mints, or stale epochs.
+const LEAF_DOMAIN: &[u8] = b"BOTANIKA_REWARD_LEAF_V1";
+
 #[derive(Accounts)]
 #[instruction(node_id_hash: [u8; 32])]
 pub struct ClaimReward<'info> {
@@ -80,8 +86,12 @@ pub fn claim_reward_handler(
         return Err(RewardError::AlreadyClaimed.into());
     }
 
-    // Leaf = keccak256(miner_pubkey, node_id_hash, cumulative_amount)
     let leaf = keccak::hashv(&[
+        LEAF_DOMAIN,
+        ctx.program_id.as_ref(),
+        reward_distributor.key().as_ref(),
+        ctx.accounts.reward_mint.key().as_ref(),
+        &reward_distributor.epoch_id.to_le_bytes(),
         ctx.accounts.miner.key().as_ref(),
         &node_id_hash,
         &cumulative_amount.to_le_bytes(),
@@ -99,8 +109,8 @@ pub fn claim_reward_handler(
     claim_status.amount_claimed = cumulative_amount;
     claim_status.last_claim = Clock::get()?.unix_timestamp;
 
-    reward_distributor.total_distributed = reward_distributor
-        .total_distributed
+    reward_distributor.total_claimed = reward_distributor
+        .total_claimed
         .checked_add(amount_to_claim)
         .ok_or(RewardError::Overflow)?;
 

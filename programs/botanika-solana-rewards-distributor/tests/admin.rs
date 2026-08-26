@@ -7,32 +7,90 @@ use solana_sdk::{
     system_program,
     instruction::Instruction,
 };
+use botanika_solana_rewards_distributor::instructions::AuthorityRole;
 use botanika_solana_rewards_distributor::state::*;
 
 mod utils;
 use utils::*;
 
 #[tokio::test]
-async fn test_set_authority() {
+async fn test_set_authority_rotates_single_role() {
     let mut setup = setup_test().await;
     let program_id = setup.context.program_id;
-    let new_authority = Keypair::new();
+    let new_root_authority = Keypair::new();
+
+    let fund_ix = solana_sdk::system_instruction::transfer(
+        &setup.context.payer.pubkey(),
+        &new_root_authority.pubkey(),
+        10_000_000,
+    );
+    setup.context.process_transaction(&[fund_ix], &[]).await.unwrap();
 
     let set_authority_ix = Instruction {
         program_id,
         accounts: botanika_solana_rewards_distributor::accounts::SetAuthority {
             reward_distributor: setup.reward_distributor_pda,
-            authority: setup.authority.pubkey(),
+            admin_authority: setup.authority.pubkey(),
         }.to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::SetAuthority { new_authority: new_authority.pubkey() }.data(),
+        data: botanika_solana_rewards_distributor::instruction::SetAuthority {
+            role: AuthorityRole::Root,
+            new_authority: new_root_authority.pubkey(),
+        }.data(),
     };
 
     setup.context.process_transaction(&[set_authority_ix], &[&setup.authority]).await.unwrap();
 
-    // Verify state
+    // Verify only the Root role moved — the other roles are untouched (P0-RWD-02).
     let account = setup.context.banks_client.get_account(setup.reward_distributor_pda).await.unwrap().unwrap();
     let data = RewardDistributor::try_deserialize(&mut account.data.as_slice()).unwrap();
-    assert_eq!(data.authority, new_authority.pubkey());
+    assert_eq!(data.root_authority, new_root_authority.pubkey());
+    assert_eq!(data.admin_authority, setup.authority.pubkey());
+    assert_eq!(data.payout_authority, setup.authority.pubkey());
+    assert_eq!(data.pause_authority, setup.authority.pubkey());
+    assert_eq!(data.treasury_authority, setup.authority.pubkey());
+
+    // The old root_authority can no longer publish roots.
+    let stale_root_ix = update_root_ix(&setup, [1u8; 32], 1, dummy_settlement(1, 0, 0));
+    let stale_result = setup.context.process_transaction(&[stale_root_ix], &[&setup.authority]).await;
+    assert!(stale_result.is_err());
+
+    // The new root_authority can.
+    let fresh_root_ix = Instruction {
+        program_id,
+        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
+            reward_distributor: setup.reward_distributor_pda,
+            settlement: settlement_pda(1, &program_id),
+            root_authority: new_root_authority.pubkey(),
+            system_program: system_program::ID,
+        }.to_account_metas(None),
+        data: botanika_solana_rewards_distributor::instruction::UpdateRoot {
+            new_root: [1u8; 32],
+            settlement: dummy_settlement(1, 0, 0),
+        }.data(),
+    };
+    setup.context.process_transaction(&[fresh_root_ix], &[&new_root_authority]).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_set_authority_unauthorized_fails() {
+    let mut setup = setup_test().await;
+    let program_id = setup.context.program_id;
+    let wrong_admin = Keypair::new();
+
+    let set_authority_ix = Instruction {
+        program_id,
+        accounts: botanika_solana_rewards_distributor::accounts::SetAuthority {
+            reward_distributor: setup.reward_distributor_pda,
+            admin_authority: wrong_admin.pubkey(),
+        }.to_account_metas(None),
+        data: botanika_solana_rewards_distributor::instruction::SetAuthority {
+            role: AuthorityRole::Payout,
+            new_authority: Keypair::new().pubkey(),
+        }.data(),
+    };
+
+    let result = setup.context.process_transaction(&[set_authority_ix], &[&wrong_admin]).await;
+    assert!(result.is_err());
 }
 
 #[tokio::test]
@@ -45,7 +103,7 @@ async fn test_pause_unpause() {
         program_id,
         accounts: botanika_solana_rewards_distributor::accounts::Pause {
             reward_distributor: setup.reward_distributor_pda,
-            authority: setup.authority.pubkey(),
+            pause_authority: setup.authority.pubkey(),
         }.to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::Pause {}.data(),
     };
@@ -60,7 +118,7 @@ async fn test_pause_unpause() {
         program_id,
         accounts: botanika_solana_rewards_distributor::accounts::Unpause {
             reward_distributor: setup.reward_distributor_pda,
-            authority: setup.authority.pubkey(),
+            pause_authority: setup.authority.pubkey(),
         }.to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::Unpause {}.data(),
     };
@@ -77,14 +135,19 @@ async fn test_authority_checks() {
     let program_id = setup.context.program_id;
     let wrong_authority = Keypair::new();
 
-    // 1. Try update_root with wrong authority
+    // Try update_root with wrong root_authority
     let update_root_ix = Instruction {
         program_id,
         accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
             reward_distributor: setup.reward_distributor_pda,
-            authority: wrong_authority.pubkey(),
+            settlement: settlement_pda(1, &program_id),
+            root_authority: wrong_authority.pubkey(),
+            system_program: system_program::ID,
         }.to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::UpdateRoot { new_root: [1u8; 32] }.data(),
+        data: botanika_solana_rewards_distributor::instruction::UpdateRoot {
+            new_root: [1u8; 32],
+            settlement: dummy_settlement(1, 0, 0),
+        }.data(),
     };
     let result = setup.context.process_transaction(&[update_root_ix], &[&wrong_authority]).await;
     assert!(result.is_err());
@@ -111,7 +174,7 @@ async fn test_withdraw_vault_success() {
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
             treasury: treasury_account.pubkey(),
-            authority: setup.authority.pubkey(),
+            treasury_authority: setup.authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: 4000 }.data(),
@@ -137,7 +200,7 @@ async fn test_withdraw_vault_success() {
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
             treasury: treasury_account.pubkey(),
-            authority: setup.authority.pubkey(),
+            treasury_authority: setup.authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: u64::MAX }.data(),
@@ -176,7 +239,7 @@ async fn test_withdraw_vault_unauthorized() {
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
             treasury: treasury_account.pubkey(),
-            authority: wrong_authority.pubkey(),
+            treasury_authority: wrong_authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: 1000 }.data(),
@@ -205,7 +268,7 @@ async fn test_withdraw_vault_insufficient_funds() {
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
             treasury: treasury_account.pubkey(),
-            authority: setup.authority.pubkey(),
+            treasury_authority: setup.authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: 10001 }.data(), // 10000 in vault initially
@@ -234,7 +297,7 @@ async fn test_withdraw_vault_invalid_amount() {
             token_vault: setup.token_vault.pubkey(),
             reward_mint: setup.reward_mint.pubkey(),
             treasury: treasury_account.pubkey(),
-            authority: setup.authority.pubkey(),
+            treasury_authority: setup.authority.pubkey(),
             token_program: anchor_spl::token::ID,
         }.to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: 0 }.data(),
@@ -243,4 +306,3 @@ async fn test_withdraw_vault_invalid_amount() {
     let result = setup.context.process_transaction(&[withdraw_ix], &[&setup.authority]).await;
     assert!(result.is_err());
 }
-

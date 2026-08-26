@@ -4,7 +4,7 @@ use anchor_lang::solana_program::system_instruction;
 use anchor_spl::token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::error::RewardError;
-use crate::state::{ClaimStatus, RewardDistributor};
+use crate::state::{BatchRecord, ClaimStatus, RewardDistributor};
 
 /// Maximum number of payouts per transaction to stay within compute/size limits.
 pub const MAX_PAYOUTS_PER_TX: usize = 10;
@@ -17,11 +17,13 @@ pub struct PayoutItem {
 }
 
 #[derive(Accounts)]
+#[instruction(batch_id: u64)]
 pub struct BatchPayout<'info> {
     #[account(
+        mut,
         seeds = [RewardDistributor::SEED],
         bump = reward_distributor.bump,
-        has_one = authority @ RewardError::Unauthorized,
+        has_one = payout_authority @ RewardError::Unauthorized,
         constraint = !reward_distributor.is_paused @ RewardError::Paused,
     )]
     pub reward_distributor: Account<'info, RewardDistributor>,
@@ -39,8 +41,19 @@ pub struct BatchPayout<'info> {
     )]
     pub reward_mint: InterfaceAccount<'info, Mint>,
 
+    /// Persists batch_id on-chain — re-submitting the same batch_id fails
+    /// because this PDA already exists (P1-RWD-05).
+    #[account(
+        init,
+        payer = payout_authority,
+        space = 8 + BatchRecord::INIT_SPACE,
+        seeds = [BatchRecord::SEED, &batch_id.to_le_bytes()],
+        bump
+    )]
+    pub batch_record: Account<'info, BatchRecord>,
+
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub payout_authority: Signer<'info>,
 
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
@@ -73,11 +86,19 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
     let seeds = &[RewardDistributor::SEED, &[reward_distributor.bump]];
     let signer_seeds = &[&seeds[..]];
 
+    let mut batch_total_amount: u64 = 0u64;
+
     for (i, item) in payouts.iter().enumerate() {
         require!(item.cumulative_amount > 0, RewardError::InvalidAmount);
 
         let claim_status_info = &ctx.remaining_accounts[i * 2];
         let recipient_token_info = &ctx.remaining_accounts[i * 2 + 1];
+
+        // ── 0. Bind the declared recipient to the actual transfer destination ──
+        require!(
+            recipient_token_info.key() == item.recipient,
+            RewardError::InvalidRecipient
+        );
 
         // ── 1. Verify ClaimStatus PDA address ──
         let (expected_pda, pda_bump) = Pubkey::find_program_address(
@@ -103,7 +124,7 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
             let rent = Rent::get()?.minimum_balance(space);
 
             let create_ix = system_instruction::create_account(
-                ctx.accounts.authority.key,
+                ctx.accounts.payout_authority.key,
                 &expected_pda,
                 rent,
                 space as u64,
@@ -120,7 +141,7 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
             invoke_signed(
                 &create_ix,
                 &[
-                    ctx.accounts.authority.to_account_info(),
+                    ctx.accounts.payout_authority.to_account_info(),
                     claim_status_info.clone(),
                     ctx.accounts.system_program.to_account_info(),
                 ],
@@ -198,6 +219,10 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
             )?;
         }
 
+        batch_total_amount = batch_total_amount
+            .checked_add(amount_to_transfer)
+            .ok_or(RewardError::Overflow)?;
+
         // ── 5. Emit event ──
         emit!(crate::events::PayoutProcessed {
             batch_id,
@@ -208,6 +233,30 @@ pub fn batch_payout_handler<'a, 'b, 'c, 'info>(
             timestamp: now,
         });
     }
+
+    // ── 6. Persist batch state + running total (P1-RWD-05 / P1-RWD-06) ──
+    let batch_record = &mut ctx.accounts.batch_record;
+    batch_record.batch_id = batch_id;
+    batch_record.item_count = payouts.len() as u16;
+    batch_record.total_amount = batch_total_amount;
+    batch_record.executed_by = ctx.accounts.payout_authority.key();
+    batch_record.processed_at = now;
+    batch_record.bump = ctx.bumps.batch_record;
+
+    ctx.accounts.reward_distributor.total_batch_distributed = ctx
+        .accounts
+        .reward_distributor
+        .total_batch_distributed
+        .checked_add(batch_total_amount)
+        .ok_or(RewardError::Overflow)?;
+
+    emit!(crate::events::BatchCompleted {
+        batch_id,
+        item_count: payouts.len() as u16,
+        total_amount: batch_total_amount,
+        executed_by: ctx.accounts.payout_authority.key(),
+        timestamp: now,
+    });
 
     Ok(())
 }
