@@ -12,7 +12,7 @@ botanika_solana_rewards_distributor = "GPk4SPDWTZyNDHDc7E37qzGLiWFAoF3Q94Uvzp1rR
 botanika_solana_rewards_distributor = "EgXM56PxY7JNSDwwBu2S4LXQV8JMJaJcQq2KTJzg5RQg"
 
 [programs.testnet]
-botanika_solana_rewards_distributor = "2rBEttbbLFtXpfkQZuUj3iXoCtE5ZWcMUCtkAARm8yoK"
+botanika_solana_rewards_distributor = "8QEAdNTRWKvLiCKgGXFp3eiKKeno6MpjAWirp1xCh6Er"
 
 [provider]
 cluster = "testnet"

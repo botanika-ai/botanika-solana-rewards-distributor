@@ -4,6 +4,17 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 use crate::state::RewardDistributor;
 use crate::error::RewardError;
 
+/// Role assignment at initialization time (P0-RWD-02). In production these
+/// should point at distinct multisig/timelock wallets, not one hot key.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct InitializeAuthorities {
+    pub admin_authority: Pubkey,
+    pub root_authority: Pubkey,
+    pub payout_authority: Pubkey,
+    pub pause_authority: Pubkey,
+    pub treasury_authority: Pubkey,
+}
+
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     #[account(
@@ -35,9 +46,16 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn initialize_handler(ctx: Context<Initialize>, authority: Pubkey) -> Result<()> {
+pub fn initialize_handler(
+    ctx: Context<Initialize>,
+    authorities: InitializeAuthorities,
+) -> Result<()> {
     let reward_distributor = &mut ctx.accounts.reward_distributor;
-    reward_distributor.authority = authority;
+    reward_distributor.admin_authority = authorities.admin_authority;
+    reward_distributor.root_authority = authorities.root_authority;
+    reward_distributor.payout_authority = authorities.payout_authority;
+    reward_distributor.pause_authority = authorities.pause_authority;
+    reward_distributor.treasury_authority = authorities.treasury_authority;
     reward_distributor.reward_mint = ctx.accounts.reward_mint.key();
     reward_distributor.token_vault = ctx.accounts.token_vault.key();
     reward_distributor.bump = ctx.bumps.reward_distributor;
@@ -45,7 +63,8 @@ pub fn initialize_handler(ctx: Context<Initialize>, authority: Pubkey) -> Result
     reward_distributor.epoch_id = 0;
     reward_distributor.is_paused = false;
     reward_distributor.last_updated_at = Clock::get()?.unix_timestamp;
-    reward_distributor.total_distributed = 0;
+    reward_distributor.total_claimed = 0;
+    reward_distributor.total_batch_distributed = 0;
 
     Ok(())
 }

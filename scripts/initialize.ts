@@ -55,9 +55,22 @@ async function main() {
     console.log(`reward_distributor: ${rewardDistributorPda.toBase58()}`);
     console.log(`token_vault: ${tokenVaultKeypair.publicKey.toBase58()}`);
 
+    // P0-RWD-02: roles are separated on-chain so a single compromised key
+    // cannot move the root, pause the program, AND sweep the vault. This
+    // script still bootstraps all five to the deployer wallet for the POC —
+    // production deployments must rotate each role to a distinct
+    // multisig/timelock wallet via set_authority right after this call.
+    const authorities = {
+      adminAuthority: walletKeypair.publicKey,
+      rootAuthority: walletKeypair.publicKey,
+      payoutAuthority: walletKeypair.publicKey,
+      pauseAuthority: walletKeypair.publicKey,
+      treasuryAuthority: walletKeypair.publicKey,
+    };
+
     console.log("Sending initialize transaction...");
     const tx = await program.methods
-      .initialize(walletKeypair.publicKey)
+      .initialize(authorities)
       .accounts({
         rewardDistributor: rewardDistributorPda,
         rewardMint: tokenMint,

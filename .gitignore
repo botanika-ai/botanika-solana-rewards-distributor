@@ -37,3 +37,4 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+.secrets-local/

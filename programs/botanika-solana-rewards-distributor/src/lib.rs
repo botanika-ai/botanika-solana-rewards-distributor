@@ -8,18 +8,22 @@ pub mod utils;
 
 use instructions::*;
 
-declare_id!("2rBEttbbLFtXpfkQZuUj3iXoCtE5ZWcMUCtkAARm8yoK");
+declare_id!("8QEAdNTRWKvLiCKgGXFp3eiKKeno6MpjAWirp1xCh6Er");
 
 #[program]
 pub mod botanika_solana_rewards_distributor {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, authority: Pubkey) -> Result<()> {
-        initialize_handler(ctx, authority)
+    pub fn initialize(ctx: Context<Initialize>, authorities: InitializeAuthorities) -> Result<()> {
+        initialize_handler(ctx, authorities)
     }
 
-    pub fn update_root(ctx: Context<UpdateRoot>, new_root: [u8; 32]) -> Result<()> {
-        update_root_handler(ctx, new_root)
+    pub fn update_root(
+        ctx: Context<UpdateRoot>,
+        new_root: [u8; 32],
+        settlement: SettlementInput,
+    ) -> Result<()> {
+        update_root_handler(ctx, new_root, settlement)
     }
 
     pub fn batch_payout<'a, 'b, 'c, 'info>(
@@ -47,8 +51,12 @@ pub mod botanika_solana_rewards_distributor {
         unpause_handler(ctx)
     }
 
-    pub fn set_authority(ctx: Context<SetAuthority>, new_authority: Pubkey) -> Result<()> {
-        set_authority_handler(ctx, new_authority)
+    pub fn set_authority(
+        ctx: Context<SetAuthority>,
+        role: AuthorityRole,
+        new_authority: Pubkey,
+    ) -> Result<()> {
+        set_authority_handler(ctx, role, new_authority)
     }
 
     pub fn withdraw_vault(ctx: Context<WithdrawVault>, amount: u64) -> Result<()> {

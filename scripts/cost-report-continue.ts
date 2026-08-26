@@ -181,11 +181,11 @@ async function main() {
   const tokenVault = configAfterInit.TOKEN_VAULT;
   const rewardDistPda = configAfterInit.REWARD_DISTRIBUTOR_PDA;
 
-  // RewardDistributor account size:
-  // discriminator(8) + authority(32) + reward_mint(32) + current_root(32) + epoch_id(8) + 
-  // token_vault(32) + bump(1) + is_paused(1) + last_updated_at(8) + total_distributed(8) + 
-  // _reserved vec length prefix(4) + reserved data(64) = 230 bytes
-  const rewardDistSize = 230;
+  // RewardDistributor account size (post role-separation, P0-RWD-02):
+  // discriminator(8) + 6 Pubkeys [admin/root/payout/pause/treasury_authority, reward_mint](192) +
+  // current_root(32) + epoch_id(8) + token_vault(32) + bump(1) + is_paused(1) + last_updated_at(8) +
+  // total_claimed(8) + total_batch_distributed(8) + _reserved(64, fixed-size array) = 362 bytes
+  const rewardDistSize = 362;
   const tokenVaultSize = 165;
 
   const rentVault = await getRentExemption(connection, tokenVaultSize);

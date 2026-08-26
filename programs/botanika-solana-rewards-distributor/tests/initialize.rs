@@ -28,6 +28,8 @@ async fn test_initialize() {
         &program_id,
     );
 
+    let authorities = all_roles(&authority);
+
     let initialize_ix = Instruction {
         program_id,
         accounts: botanika_solana_rewards_distributor::accounts::Initialize {
@@ -38,7 +40,7 @@ async fn test_initialize() {
             token_program: anchor_spl::token::ID,
             system_program: system_program::ID,
         }.to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::Initialize { authority: authority.pubkey() }.data(),
+        data: botanika_solana_rewards_distributor::instruction::Initialize { authorities }.data(),
     };
 
     context.process_transaction(&[initialize_ix], &[&token_vault]).await.unwrap();
@@ -46,10 +48,16 @@ async fn test_initialize() {
     // Verify initial state
     let account = context.banks_client.get_account(reward_distributor_pda).await.unwrap().unwrap();
     let data = RewardDistributor::try_deserialize(&mut account.data.as_slice()).unwrap();
-    assert_eq!(data.authority, authority.pubkey());
+    assert_eq!(data.admin_authority, authority.pubkey());
+    assert_eq!(data.root_authority, authority.pubkey());
+    assert_eq!(data.payout_authority, authority.pubkey());
+    assert_eq!(data.pause_authority, authority.pubkey());
+    assert_eq!(data.treasury_authority, authority.pubkey());
     assert_eq!(data.reward_mint, reward_mint.pubkey());
     assert_eq!(data.token_vault, token_vault.pubkey());
     assert_eq!(data.current_root, [0u8; 32]);
     assert_eq!(data.epoch_id, 0);
     assert_eq!(data.is_paused, false);
+    assert_eq!(data.total_claimed, 0);
+    assert_eq!(data.total_batch_distributed, 0);
 }

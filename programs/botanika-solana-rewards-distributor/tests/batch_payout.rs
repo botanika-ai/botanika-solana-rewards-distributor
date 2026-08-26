@@ -24,7 +24,8 @@ fn batch_payout_ix(
         reward_distributor: setup.reward_distributor_pda,
         token_vault: setup.token_vault.pubkey(),
         reward_mint: setup.reward_mint.pubkey(),
-        authority: setup.authority.pubkey(),
+        batch_record: batch_record_pda(batch_id, &program_id),
+        payout_authority: setup.authority.pubkey(),
         token_program: anchor_spl::token::ID,
         system_program: system_program::ID,
     }
@@ -108,7 +109,7 @@ async fn test_batch_payout_success() {
     assert_eq!(claim_status_data.node_id_hash, node_id_hash);
     assert_eq!(claim_status_data.amount_claimed, 1000);
 
-    // Verify RewardDistributor state (total_distributed is no longer updated on-chain to allow parallel payouts)
+    // Verify RewardDistributor running total is now updated (P1-RWD-06 fix)
     let distributor_account = setup
         .context
         .banks_client
@@ -118,13 +119,72 @@ async fn test_batch_payout_success() {
         .unwrap();
     let distributor_data =
         RewardDistributor::try_deserialize(&mut distributor_account.data.as_slice()).unwrap();
-    assert_eq!(distributor_data.total_distributed, 0);
+    assert_eq!(distributor_data.total_batch_distributed, 1000);
+    assert_eq!(distributor_data.total_claimed, 0);
+
+    // Verify BatchRecord PDA was created (P1-RWD-05)
+    let batch_record_address = batch_record_pda(1, &setup.context.program_id);
+    let batch_record_account = setup
+        .context
+        .banks_client
+        .get_account(batch_record_address)
+        .await
+        .unwrap()
+        .unwrap();
+    let batch_record_data =
+        BatchRecord::try_deserialize(&mut batch_record_account.data.as_slice()).unwrap();
+    assert_eq!(batch_record_data.batch_id, 1);
+    assert_eq!(batch_record_data.item_count, 1);
+    assert_eq!(batch_record_data.total_amount, 1000);
+}
+
+#[tokio::test]
+async fn test_batch_payout_duplicate_batch_id_fails() {
+    let mut setup = setup_test().await;
+    let node_id_hash = hash_node_id(TEST_NODE_ID);
+
+    let recipient = Keypair::new();
+    let recipient_token_account = Keypair::new();
+    setup
+        .context
+        .create_token_account(&recipient_token_account, &setup.reward_mint.pubkey(), &recipient.pubkey())
+        .await
+        .unwrap();
+
+    let payouts = vec![PayoutItem {
+        recipient: recipient_token_account.pubkey(),
+        node_id_hash,
+        cumulative_amount: 1000u64,
+    }];
+
+    let ix = batch_payout_ix(&setup, 1, payouts.clone());
+    setup
+        .context
+        .process_transaction(&[ix], &[&setup.authority])
+        .await
+        .unwrap();
+
+    // Re-submitting the same batch_id must fail — the BatchRecord PDA already exists.
+    // A no-op dummy instruction is appended so the replay transaction has a
+    // distinct signature from the first one (otherwise solana-program-test
+    // treats the byte-identical transaction as already processed).
+    let replay_ix = batch_payout_ix(&setup, 1, payouts);
+    let dummy_ix = solana_sdk::system_instruction::transfer(
+        &setup.context.payer.pubkey(),
+        &Pubkey::new_unique(),
+        0,
+    );
+    let result = setup
+        .context
+        .process_transaction(&[replay_ix, dummy_ix], &[&setup.authority])
+        .await;
+    assert!(result.is_err());
 }
 
 #[tokio::test]
 async fn test_batch_payout_multiple_recipients() {
     let mut setup = setup_test().await;
-    
+
     let node_a = hash_node_id(TEST_NODE_ID);
     let node_b = hash_node_id(TEST_NODE_ID_2);
     let amount_a = 800u64;
@@ -195,7 +255,7 @@ async fn test_batch_payout_multiple_recipients() {
 async fn test_batch_payout_cumulative() {
     let mut setup = setup_test().await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
-    
+
     let recipient = Keypair::new();
     let recipient_token_account = Keypair::new();
     setup
@@ -258,6 +318,18 @@ async fn test_batch_payout_cumulative() {
     let claim_status_data =
         ClaimStatus::try_deserialize(&mut claim_status_account.data.as_slice()).unwrap();
     assert_eq!(claim_status_data.amount_claimed, 2500);
+
+    // Verify running total reflects both batches (1000 + 1500)
+    let distributor_account = setup
+        .context
+        .banks_client
+        .get_account(setup.reward_distributor_pda)
+        .await
+        .unwrap()
+        .unwrap();
+    let distributor_data =
+        RewardDistributor::try_deserialize(&mut distributor_account.data.as_slice()).unwrap();
+    assert_eq!(distributor_data.total_batch_distributed, 2500);
 }
 
 #[tokio::test]
@@ -294,19 +366,20 @@ async fn test_batch_payout_too_large_fails() {
 async fn test_batch_payout_unauthorized_fails() {
     let mut setup = setup_test().await;
     let wrong_authority = Keypair::new();
-    
+
     let payouts = vec![PayoutItem {
         recipient: Pubkey::new_unique(),
         node_id_hash: [0u8; 32],
         cumulative_amount: 100,
     }];
-    
+
     let program_id = setup.context.program_id;
     let mut accounts = botanika_solana_rewards_distributor::accounts::BatchPayout {
         reward_distributor: setup.reward_distributor_pda,
         token_vault: setup.token_vault.pubkey(),
         reward_mint: setup.reward_mint.pubkey(),
-        authority: wrong_authority.pubkey(), // non-authority signer
+        batch_record: batch_record_pda(1, &program_id),
+        payout_authority: wrong_authority.pubkey(), // non-authority signer
         token_program: anchor_spl::token::ID,
         system_program: system_program::ID,
     }
@@ -338,6 +411,59 @@ async fn test_batch_payout_unauthorized_fails() {
 }
 
 #[tokio::test]
+async fn test_batch_payout_wrong_recipient_fails() {
+    let mut setup = setup_test().await;
+    let node_id_hash = hash_node_id(TEST_NODE_ID);
+
+    // recipient in the instruction payload does not match the token account
+    // actually passed in remaining_accounts (P0-RWD-01 regression check).
+    let declared_recipient = Pubkey::new_unique();
+    let actual_recipient = Keypair::new();
+    let actual_recipient_token_account = Keypair::new();
+    setup
+        .context
+        .create_token_account(&actual_recipient_token_account, &setup.reward_mint.pubkey(), &actual_recipient.pubkey())
+        .await
+        .unwrap();
+
+    let program_id = setup.context.program_id;
+    let mut accounts = botanika_solana_rewards_distributor::accounts::BatchPayout {
+        reward_distributor: setup.reward_distributor_pda,
+        token_vault: setup.token_vault.pubkey(),
+        reward_mint: setup.reward_mint.pubkey(),
+        batch_record: batch_record_pda(1, &program_id),
+        payout_authority: setup.authority.pubkey(),
+        token_program: anchor_spl::token::ID,
+        system_program: system_program::ID,
+    }
+    .to_account_metas(None);
+
+    let claim_status = claim_status_pda(&node_id_hash, &setup.reward_distributor_pda, &program_id);
+    accounts.push(AccountMeta::new(claim_status, false));
+    accounts.push(AccountMeta::new(actual_recipient_token_account.pubkey(), false));
+
+    let ix = Instruction {
+        program_id,
+        accounts,
+        data: botanika_solana_rewards_distributor::instruction::BatchPayout {
+            batch_id: 1,
+            payouts: vec![PayoutItem {
+                recipient: declared_recipient,
+                node_id_hash,
+                cumulative_amount: 100,
+            }],
+        }
+        .data(),
+    };
+
+    let result = setup
+        .context
+        .process_transaction(&[ix], &[&setup.authority])
+        .await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
 async fn test_batch_payout_paused_fails() {
     let mut setup = setup_test().await;
     let program_id = setup.context.program_id;
@@ -347,7 +473,7 @@ async fn test_batch_payout_paused_fails() {
         program_id,
         accounts: botanika_solana_rewards_distributor::accounts::Pause {
             reward_distributor: setup.reward_distributor_pda,
-            authority: setup.authority.pubkey(),
+            pause_authority: setup.authority.pubkey(),
         }.to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::Pause {}.data(),
     };
@@ -370,7 +496,7 @@ async fn test_batch_payout_paused_fails() {
 async fn test_batch_payout_lower_cumulative_skipped() {
     let mut setup = setup_test().await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
-    
+
     let recipient = Keypair::new();
     let recipient_token_account = Keypair::new();
     setup
@@ -434,4 +560,16 @@ async fn test_batch_payout_lower_cumulative_skipped() {
     let claim_status_data =
         ClaimStatus::try_deserialize(&mut claim_status_account.data.as_slice()).unwrap();
     assert_eq!(claim_status_data.amount_claimed, 1000);
+
+    // total_batch_distributed only grew by the first batch's 1000 (second batch transferred 0)
+    let distributor_account = setup
+        .context
+        .banks_client
+        .get_account(setup.reward_distributor_pda)
+        .await
+        .unwrap()
+        .unwrap();
+    let distributor_data =
+        RewardDistributor::try_deserialize(&mut distributor_account.data.as_slice()).unwrap();
+    assert_eq!(distributor_data.total_batch_distributed, 1000);
 }

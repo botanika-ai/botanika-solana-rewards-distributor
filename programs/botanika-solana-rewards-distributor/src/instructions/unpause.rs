@@ -9,11 +9,11 @@ pub struct Unpause<'info> {
         mut,
         seeds = [RewardDistributor::SEED],
         bump = reward_distributor.bump,
-        has_one = authority @ RewardError::Unauthorized,
+        has_one = pause_authority @ RewardError::Unauthorized,
     )]
     pub reward_distributor: Account<'info, RewardDistributor>,
 
-    pub authority: Signer<'info>,
+    pub pause_authority: Signer<'info>,
 }
 
 pub fn unpause_handler(ctx: Context<Unpause>) -> Result<()> {
