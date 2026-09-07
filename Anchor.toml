@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-botanika_solana_rewards_distributor = "GPk4SPDWTZyNDHDc7E37qzGLiWFAoF3Q94Uvzp1rRZbB"
+botanika_solana_rewards_distributor = "8QEAdNTRWKvLiCKgGXFp3eiKKeno6MpjAWirp1xCh6Er"
 
 [programs.localnet]
 botanika_solana_rewards_distributor = "EgXM56PxY7JNSDwwBu2S4LXQV8JMJaJcQq2KTJzg5RQg"
@@ -14,11 +14,12 @@ botanika_solana_rewards_distributor = "EgXM56PxY7JNSDwwBu2S4LXQV8JMJaJcQq2KTJzg5
 [programs.testnet]
 botanika_solana_rewards_distributor = "8QEAdNTRWKvLiCKgGXFp3eiKKeno6MpjAWirp1xCh6Er"
 
+[registry]
+url = "https://api.apr.dev"
+
 [provider]
 cluster = "testnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "cargo test --manifest-path programs/botanika-solana-rewards-distributor/Cargo.toml"
-
-[hooks]
