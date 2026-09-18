@@ -13,6 +13,11 @@ pub struct InitializeAuthorities {
     pub payout_authority: Pubkey,
     pub pause_authority: Pubkey,
     pub treasury_authority: Pubkey,
+    /// Defaults to `admin_authority` at init time if left as the zero
+    /// pubkey; rotate to the real escrow PDA via `set_authority` once
+    /// `botanika-magicblock-contracts`'s escrow PDA is known (Design
+    /// Freeze v1 §5.1).
+    pub finalize_claim_authority: Pubkey,
 }
 
 #[derive(Accounts)]
@@ -56,6 +61,11 @@ pub fn initialize_handler(
     reward_distributor.payout_authority = authorities.payout_authority;
     reward_distributor.pause_authority = authorities.pause_authority;
     reward_distributor.treasury_authority = authorities.treasury_authority;
+    reward_distributor.finalize_claim_authority = if authorities.finalize_claim_authority == Pubkey::default() {
+        authorities.admin_authority
+    } else {
+        authorities.finalize_claim_authority
+    };
     reward_distributor.reward_mint = ctx.accounts.reward_mint.key();
     reward_distributor.token_vault = ctx.accounts.token_vault.key();
     reward_distributor.bump = ctx.bumps.reward_distributor;

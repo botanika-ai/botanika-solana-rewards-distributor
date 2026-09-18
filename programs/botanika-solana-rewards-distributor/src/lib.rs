@@ -62,4 +62,31 @@ pub mod botanika_solana_rewards_distributor {
     pub fn withdraw_vault(ctx: Context<WithdrawVault>, amount: u64) -> Result<()> {
         withdraw_vault_handler(ctx, amount)
     }
+
+    /// Target claim flow (Design Freeze v1 §3.10/§6.4): signer is the
+    /// escrow PDA a Magic Action from `botanika-magicblock-contracts`
+    /// signs for, not a human keypair. `claim_reward` above is kept
+    /// unmodified as the PAD v1.0 §11.3 cold fallback.
+    #[allow(clippy::too_many_arguments)]
+    pub fn finalize_claim(
+        ctx: Context<FinalizeClaim>,
+        claim_nonce: u64,
+        beneficiary: Pubkey,
+        node_id_hash: [u8; 32],
+        wallet_binding_id: u64,
+        amount: u64,
+        reward_state_hash: [u8; 32],
+        settlement_id: u64,
+    ) -> Result<()> {
+        finalize_claim_handler(
+            ctx,
+            claim_nonce,
+            beneficiary,
+            node_id_hash,
+            wallet_binding_id,
+            amount,
+            reward_state_hash,
+            settlement_id,
+        )
+    }
 }

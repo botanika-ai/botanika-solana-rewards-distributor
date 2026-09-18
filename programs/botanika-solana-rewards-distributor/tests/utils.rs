@@ -4,6 +4,7 @@ use anchor_lang::solana_program::keccak;
 use anchor_spl::token_interface;
 use solana_program_test::*;
 use solana_sdk::{
+    account::{AccountSharedData, WritableAccount},
     signature::{Keypair, Signer},
     transaction::Transaction,
     instruction::Instruction,
@@ -25,30 +26,62 @@ fn entry_wrapper(
 }
 
 pub struct TestContext {
-    pub banks_client: BanksClient,
-    pub payer: Keypair,
-    pub recent_blockhash: solana_sdk::hash::Hash,
+    pub inner: ProgramTestContext,
     pub program_id: Pubkey,
+}
+
+impl std::ops::Deref for TestContext {
+    type Target = ProgramTestContext;
+    fn deref(&self) -> &ProgramTestContext {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for TestContext {
+    fn deref_mut(&mut self) -> &mut ProgramTestContext {
+        &mut self.inner
+    }
 }
 
 impl TestContext {
     pub async fn new() -> Self {
         let program_id = botanika_solana_rewards_distributor::ID;
-        let mut program_test = ProgramTest::new(
+        let program_test = ProgramTest::new(
             "botanika_solana_rewards_distributor",
             program_id,
             processor!(entry_wrapper),
         );
 
+        let inner = program_test.start_with_context().await;
 
-        let (banks_client, payer, recent_blockhash) = program_test.start().await;
+        Self { inner, program_id }
+    }
 
-        Self {
-            banks_client,
-            payer,
-            recent_blockhash,
-            program_id,
-        }
+    /// Test-only shortcut: directly overwrites `RewardDistributor.current_root`/
+    /// `.epoch_id` via `ProgramTestContext::set_account` instead of routing
+    /// through `update_root`, which is now a MagicBlock `#[action]` handler
+    /// authorized via the delegation program's injected `escrow`/`escrow_auth`
+    /// (see `update_root`'s doc comment) -- litesvm/solana-program-test cannot
+    /// produce a genuine signature for that off-curve PDA, so `claim_reward`
+    /// tests (which only care that *some* root is published, not how) seed
+    /// the root directly instead.
+    pub async fn set_reward_distributor_root(&mut self, pda: Pubkey, root: [u8; 32], epoch_id: u64) {
+        let existing = self.banks_client.get_account(pda).await.unwrap().unwrap();
+        let mut data = RewardDistributor::try_deserialize(&mut existing.data.as_slice()).unwrap();
+        data.current_root = root;
+        data.epoch_id = epoch_id;
+
+        let mut bytes = Vec::new();
+        data.try_serialize(&mut bytes).unwrap();
+
+        let shared = AccountSharedData::create(
+            existing.lamports,
+            bytes,
+            existing.owner,
+            existing.executable,
+            existing.rent_epoch,
+        );
+        self.set_account(&pda, &shared);
     }
 
     pub async fn get_latest_blockhash(&mut self) -> solana_sdk::hash::Hash {
@@ -159,6 +192,7 @@ pub fn all_roles(authority: &Keypair) -> InitializeAuthorities {
         payout_authority: authority.pubkey(),
         pause_authority: authority.pubkey(),
         treasury_authority: authority.pubkey(),
+        finalize_claim_authority: authority.pubkey(),
     }
 }
 
@@ -280,30 +314,15 @@ pub fn dummy_settlement(epoch: u64, leaf_count: u32, total_liability: u64) -> Se
     }
 }
 
-/// Builds an update_root instruction, including the settlement PDA that is
-/// now required alongside every root publication.
-pub fn update_root_ix(
-    setup: &SetupResult,
-    root: [u8; 32],
-    next_epoch_id: u64,
-    settlement: SettlementInput,
-) -> Instruction {
-    Instruction {
-        program_id: setup.context.program_id,
-        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
-            reward_distributor: setup.reward_distributor_pda,
-            settlement: settlement_pda(next_epoch_id, &setup.context.program_id),
-            root_authority: setup.authority.pubkey(),
-            system_program: system_program::ID,
-        }
-        .to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::UpdateRoot {
-            new_root: root,
-            settlement,
-        }
-        .data(),
-    }
-}
+/// `update_root` no longer takes a plain `Signer` -- it is an `#[action]`
+/// handler authorized via the delegation program's injected `escrow`/
+/// `escrow_auth` accounts (Design Freeze v1 §5.1/§6.7), which only a real
+/// MagicBlock validator can produce a valid signature for (`escrow` is an
+/// off-curve PDA with no keypair). litesvm does not host MagicBlock's
+/// native Magic program, so this instruction cannot be exercised here;
+/// it is verified live against MagicBlock devnet-as instead (see
+/// docs/MagicBlock_Support_Questions.md and the `botanika-magicblock-contracts`
+/// devnet POC scripts).
 
 /// Leaf hash matching the on-chain domain-separated digest (P1-RWD-07):
 /// keccak256(domain || program_id || distributor || reward_mint || epoch_id || miner || node_id_hash || amount)

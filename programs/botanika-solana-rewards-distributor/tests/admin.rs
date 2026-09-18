@@ -48,27 +48,10 @@ async fn test_set_authority_rotates_single_role() {
     assert_eq!(data.payout_authority, setup.authority.pubkey());
     assert_eq!(data.pause_authority, setup.authority.pubkey());
     assert_eq!(data.treasury_authority, setup.authority.pubkey());
-
-    // The old root_authority can no longer publish roots.
-    let stale_root_ix = update_root_ix(&setup, [1u8; 32], 1, dummy_settlement(1, 0, 0));
-    let stale_result = setup.context.process_transaction(&[stale_root_ix], &[&setup.authority]).await;
-    assert!(stale_result.is_err());
-
-    // The new root_authority can.
-    let fresh_root_ix = Instruction {
-        program_id,
-        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
-            reward_distributor: setup.reward_distributor_pda,
-            settlement: settlement_pda(1, &program_id),
-            root_authority: new_root_authority.pubkey(),
-            system_program: system_program::ID,
-        }.to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::UpdateRoot {
-            new_root: [1u8; 32],
-            settlement: dummy_settlement(1, 0, 0),
-        }.data(),
-    };
-    setup.context.process_transaction(&[fresh_root_ix], &[&new_root_authority]).await.unwrap();
+    // `update_root` itself is no longer a `Signer`-gated instruction --
+    // it is authorized via the delegation program's injected `escrow`/
+    // `escrow_auth`, which `reward_distributor.root_authority` (verified
+    // above) constrains. See `update_root`'s doc comment / `utils.rs`.
 }
 
 #[tokio::test]
@@ -129,29 +112,6 @@ async fn test_pause_unpause() {
     assert_eq!(data.is_paused, false);
 }
 
-#[tokio::test]
-async fn test_authority_checks() {
-    let mut setup = setup_test().await;
-    let program_id = setup.context.program_id;
-    let wrong_authority = Keypair::new();
-
-    // Try update_root with wrong root_authority
-    let update_root_ix = Instruction {
-        program_id,
-        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
-            reward_distributor: setup.reward_distributor_pda,
-            settlement: settlement_pda(1, &program_id),
-            root_authority: wrong_authority.pubkey(),
-            system_program: system_program::ID,
-        }.to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::UpdateRoot {
-            new_root: [1u8; 32],
-            settlement: dummy_settlement(1, 0, 0),
-        }.data(),
-    };
-    let result = setup.context.process_transaction(&[update_root_ix], &[&wrong_authority]).await;
-    assert!(result.is_err());
-}
 
 #[tokio::test]
 async fn test_withdraw_vault_success() {

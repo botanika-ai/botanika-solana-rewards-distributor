@@ -56,11 +56,7 @@ async fn test_valid_claim() {
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root, 1).await;
 
     let proof = get_proof(vec![leaf], 0);
     let claim_ix = claim_reward_ix(
@@ -98,11 +94,7 @@ async fn test_invalid_proof() {
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root, 1).await;
 
     let claim_ix = claim_reward_ix(
         &setup,
@@ -128,11 +120,7 @@ async fn test_duplicate_claim() {
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root, 1).await;
 
     let proof = get_proof(vec![leaf], 0);
     let claim_ix = claim_reward_ix(
@@ -171,11 +159,7 @@ async fn test_claim_delta() {
     let leaf1 = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount1);
     let root1 = compute_root(vec![leaf1]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root1, 1, dummy_settlement(1, 1, amount1))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root1, 1).await;
 
     let proof1 = get_proof(vec![leaf1], 0);
     let claim_ix1 = claim_reward_ix(
@@ -196,11 +180,7 @@ async fn test_claim_delta() {
     let leaf2 = compute_leaf(&setup, 2, setup.miner.pubkey(), node_id_hash, amount2);
     let root2 = compute_root(vec![leaf2]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root2, 2, dummy_settlement(2, 1, amount2))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root2, 2).await;
 
     let proof2 = get_proof(vec![leaf2], 0);
     let claim_ix2 = claim_reward_ix(
@@ -243,14 +223,7 @@ async fn test_claim_two_nodes_same_miner() {
     leaves.sort();
     let root = compute_root(leaves.clone());
 
-    setup
-        .context
-        .process_transaction(
-            &[update_root_ix(&setup, root, 1, dummy_settlement(1, 2, amount_a + amount_b))],
-            &[&setup.authority],
-        )
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root, 1).await;
 
     let index_a = leaves.iter().position(|l| *l == leaf_a).unwrap();
     let index_b = leaves.iter().position(|l| *l == leaf_b).unwrap();
@@ -304,11 +277,7 @@ async fn test_wrong_node_id_hash() {
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root, 1).await;
 
     let claim_ix = claim_reward_ix(
         &setup,
@@ -334,11 +303,7 @@ async fn test_wrong_recipient() {
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root, 1).await;
 
     let proof = get_proof(vec![leaf], 0);
     let wrong_miner = Keypair::new();
@@ -416,11 +381,7 @@ async fn test_invalid_recipient_owner() {
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
     let root = compute_root(vec![leaf]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root, 1, dummy_settlement(1, 1, amount))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root, 1).await;
 
     let proof = get_proof(vec![leaf], 0);
     let random_owner = Keypair::new();
@@ -484,11 +445,7 @@ async fn test_wallet_change_claims_delta_only() {
     let leaf1 = compute_leaf(&setup, 1, first_miner.pubkey(), node_id_hash, amount1);
     let root1 = compute_root(vec![leaf1]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root1, 1, dummy_settlement(1, 1, amount1))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root1, 1).await;
 
     let claim_ix1 = claim_reward_ix(
         &setup,
@@ -508,11 +465,7 @@ async fn test_wallet_change_claims_delta_only() {
     let leaf2 = compute_leaf(&setup, 2, second_miner.pubkey(), node_id_hash, amount2);
     let root2 = compute_root(vec![leaf2]);
 
-    setup
-        .context
-        .process_transaction(&[update_root_ix(&setup, root2, 2, dummy_settlement(2, 1, amount2))], &[&setup.authority])
-        .await
-        .unwrap();
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root2, 2).await;
 
     let claim_ix2 = claim_reward_ix(
         &setup,

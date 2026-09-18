@@ -13,6 +13,7 @@ pub enum AuthorityRole {
     Payout,
     Pause,
     Treasury,
+    FinalizeClaim,
 }
 
 #[derive(Accounts)]
@@ -40,6 +41,7 @@ pub fn set_authority_handler(
         AuthorityRole::Payout => reward_distributor.payout_authority = new_authority,
         AuthorityRole::Pause => reward_distributor.pause_authority = new_authority,
         AuthorityRole::Treasury => reward_distributor.treasury_authority = new_authority,
+        AuthorityRole::FinalizeClaim => reward_distributor.finalize_claim_authority = new_authority,
     }
 
     emit!(crate::events::AuthorityUpdated {

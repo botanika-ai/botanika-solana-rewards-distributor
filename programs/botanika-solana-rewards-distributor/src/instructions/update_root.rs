@@ -1,7 +1,14 @@
 use anchor_lang::prelude::*;
+use ephemeral_rollups_sdk::anchor::action;
+use ephemeral_rollups_sdk::pda::ephemeral_balance_pda_from_payer;
 
 use crate::error::RewardError;
 use crate::state::{RewardDistributor, RewardSettlementState};
+
+/// `ActionArgs::new`'s default `escrow_index` (see `ephemeral_rollups_sdk`'s
+/// `magicblock_magic_program_api::args::ActionArgs::new`) -- must match what
+/// `botanika-magicblock-contracts`'s `commit_epoch_state` schedules with.
+pub const ACTION_ESCROW_INDEX: u8 = 255;
 
 /// Off-chain-computed settlement metadata that must accompany every new root
 /// (P0-RWD-03). Binds the published root to the proof epoch / reward policy
@@ -18,19 +25,25 @@ pub struct SettlementInput {
     pub total_liability: u64,
 }
 
+/// The only way this instruction can execute (Design Freeze v1 §5.1/§6.7):
+/// a Magic Action scheduled by `botanika-magicblock-contracts`'s
+/// `commit_epoch_state`, never a human keypair. Confirmed live against
+/// MagicBlock devnet-as 2026-09-17: the delegation program calls this
+/// instruction on the base layer after the ER commit lands, appending
+/// `escrow_auth`/`escrow` as the final two accounts -- there is no
+/// `root_authority: Signer` the way a human-initiated instruction would
+/// have, since a Magic Action's replayed CPI cannot mark an arbitrary
+/// program-chosen account `is_signer`; only the derived `escrow` PDA is
+/// ever a real signer here.
+#[action]
 #[derive(Accounts)]
 pub struct UpdateRoot<'info> {
-    #[account(
-        mut,
-        seeds = [RewardDistributor::SEED],
-        bump = reward_distributor.bump,
-        has_one = root_authority @ RewardError::Unauthorized,
-    )]
+    #[account(mut, seeds = [RewardDistributor::SEED], bump = reward_distributor.bump)]
     pub reward_distributor: Account<'info, RewardDistributor>,
 
     #[account(
         init,
-        payer = root_authority,
+        payer = escrow,
         space = 8 + RewardSettlementState::INIT_SPACE,
         seeds = [
             RewardSettlementState::SEED,
@@ -40,10 +53,26 @@ pub struct UpdateRoot<'info> {
     )]
     pub settlement: Account<'info, RewardSettlementState>,
 
-    #[account(mut)]
-    pub root_authority: Signer<'info>,
-
     pub system_program: Program<'info, System>,
+
+    /// CHECK: bound to `reward_distributor.root_authority` (rotatable via
+    /// `set_authority`) -- this is what actually restricts who can drive
+    /// this instruction, since `escrow` alone only proves *some* Magic
+    /// Action scheduled it, not which program's.
+    #[account(address = reward_distributor.root_authority @ RewardError::Unauthorized)]
+    pub escrow_auth: UncheckedAccount<'info>,
+
+    /// CHECK: delegation-program-owned ephemeral balance PDA; only the
+    /// delegation program can sign for it (via `invoke_signed` when it
+    /// dispatches the post-commit action), which is the real authentication
+    /// anchor for "this call arrived through a real Magic Action" -- see
+    /// `escrow_auth` for who scheduled it.
+    #[account(
+        mut,
+        signer,
+        address = ephemeral_balance_pda_from_payer(&escrow_auth.key(), ACTION_ESCROW_INDEX),
+    )]
+    pub escrow: UncheckedAccount<'info>,
 }
 
 pub fn update_root_handler(
@@ -82,7 +111,7 @@ pub fn update_root_handler(
     settlement_account.bump = ctx.bumps.settlement;
 
     emit!(crate::events::RootUpdated {
-        authority: ctx.accounts.root_authority.key(),
+        authority: ctx.accounts.escrow_auth.key(),
         new_root,
         epoch_id: settlement_id,
         settlement_id,

@@ -56,3 +56,14 @@ pub struct AuthorityUpdated {
     pub new_authority: Pubkey,
     pub updated_by: Pubkey,
 }
+
+#[event]
+pub struct ClaimFinalized {
+    pub claim_nonce: u64,
+    pub beneficiary: Pubkey,
+    pub node_id_hash: [u8; 32],
+    pub wallet_binding_id: u64,
+    pub amount: u64,
+    pub settlement_id: u64,
+    pub timestamp: i64,
+}

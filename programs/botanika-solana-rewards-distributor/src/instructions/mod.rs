@@ -1,5 +1,6 @@
 pub mod batch_payout;
 pub mod claim_reward;
+pub mod finalize_claim;
 pub mod initialize;
 pub mod pause;
 pub mod set_authority;
@@ -9,6 +10,7 @@ pub mod withdraw_vault;
 
 pub use batch_payout::*;
 pub use claim_reward::*;
+pub use finalize_claim::*;
 pub use initialize::*;
 pub use pause::*;
 pub use set_authority::*;
