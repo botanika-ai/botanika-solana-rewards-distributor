@@ -10,7 +10,8 @@
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
     "deploy": "anchor deploy -- --max-sign-attempts 100 --with-compute-unit-price 500000000",
     "setup": "ts-node scripts/setup-distributor.ts",
-    "rotate-authorities": "ts-node scripts/rotate-authorities-to-multisig.ts"
+    "rotate-authorities": "ts-node scripts/rotate-authorities-to-multisig.ts",
+    "initialize-production": "ts-node scripts/initialize-production.ts"
   },
   "private": true,
   "workspaces": [
