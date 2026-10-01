@@ -120,12 +120,13 @@ npx ts-node scripts/generate-merkle.ts
 * `MERKLE_ROOT`: Mảng byte của Merkle root.
 * `PROOFS`: Các mảng chứng thực (proof) cần thiết để mỗi Miner claim token.
 
-### 5. Cập Nhật Merkle Root lên On-Chain
-Khi đã có Merkle Root off-chain, quản trị viên (Authority) cần đưa Root này lên smart contract thông qua giao dịch `updateRoot` để kích hoạt đợt phân phối mới.
-```bash
-npx ts-node scripts/update-root.ts
-```
-*Đầu ra:* Giao dịch thành công, on-chain state được cập nhật với Merkle Root mới nhất và phiên bản Root Version tăng lên.
+### 5. ~~Cập Nhật Merkle Root lên On-Chain~~ — OBSOLETE, đã xoá `scripts/update-root.ts`
+`update_root` giờ chỉ chạy được qua **Magic Action** do `botanika-magicblock-contracts`'s
+`commit_epoch_state` schedule (Design Freeze v1 §5.1/§6.7) — `root_authority` đã khoá vào
+`escrow_auth` PDA của chương trình đó, không ví người nào (kể cả Authority admin) ký được nữa.
+Không còn script admin nào gọi trực tiếp instruction này; xem `botanika-magicblock-contracts/scripts/devnet-t1-fault-injection.ts`
+để biết luồng gọi thật qua ER. `claim_reward` (bước 6 dưới) vẫn là cold fallback hợp lệ
+(PAD v1.0 §11.3) dùng chung Merkle root/proof từ bước 4, không phụ thuộc bước này.
 
 ### 6. Kiểm Tra Trạng Thái Hiện Tại (On-Chain Status)
 Bạn có thể kiểm tra nhanh thông tin thực tế đang được lưu trên mạng Solana của Reward Distributor PDA (bao gồm: Authority, Reward Mint, Token Vault, Merkle Root hiện tại, tổng số đã phân phối, trạng thái Pause):
