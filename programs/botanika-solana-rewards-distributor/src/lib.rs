@@ -37,10 +37,11 @@ pub mod botanika_solana_rewards_distributor {
     pub fn claim_reward(
         ctx: Context<ClaimReward>,
         node_id_hash: [u8; 32],
+        settlement_id: u64,
         cumulative_amount: u64,
         proof: Vec<[u8; 32]>,
     ) -> Result<()> {
-        claim_reward_handler(ctx, node_id_hash, cumulative_amount, proof)
+        claim_reward_handler(ctx, node_id_hash, settlement_id, cumulative_amount, proof)
     }
 
     pub fn pause(ctx: Context<Pause>) -> Result<()> {

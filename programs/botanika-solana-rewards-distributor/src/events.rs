@@ -17,6 +17,7 @@ pub struct RootUpdated {
 pub struct RewardClaimed {
     pub miner: Pubkey,
     pub node_id_hash: [u8; 32],
+    pub settlement_id: u64,
     pub amount: u64,
     pub cumulative_amount: u64,
     pub timestamp: i64,

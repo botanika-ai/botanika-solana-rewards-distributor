@@ -34,4 +34,6 @@ pub enum RewardError {
     InvalidClaimStatusPda,
     #[msg("Settlement epoch_from must be <= epoch_to")]
     InvalidSettlementRange,
+    #[msg("Settlement account's settlement_id does not match the id requested")]
+    SettlementIdMismatch,
 }
