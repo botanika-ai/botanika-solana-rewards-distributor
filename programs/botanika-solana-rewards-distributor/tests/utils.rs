@@ -65,6 +65,12 @@ impl TestContext {
     /// produce a genuine signature for that off-curve PDA, so `claim_reward`
     /// tests (which only care that *some* root is published, not how) seed
     /// the root directly instead.
+    ///
+    /// Also seeds the matching `RewardSettlementState` PDA at `settlement_id
+    /// == epoch_id` (P1-RWD-04: `claim_reward` now verifies against a
+    /// specific settlement's own `reward_delta_root`, not the distributor's
+    /// mutable `current_root`), since `update_root_handler` -- the only real
+    /// code path that creates one -- is equally unreachable from these tests.
     pub async fn set_reward_distributor_root(&mut self, pda: Pubkey, root: [u8; 32], epoch_id: u64) {
         let existing = self.banks_client.get_account(pda).await.unwrap().unwrap();
         let mut data = RewardDistributor::try_deserialize(&mut existing.data.as_slice()).unwrap();
@@ -82,6 +88,37 @@ impl TestContext {
             existing.rent_epoch,
         );
         self.set_account(&pda, &shared);
+
+        let (settlement_pda, bump) = Pubkey::find_program_address(
+            &[RewardSettlementState::SEED, &epoch_id.to_le_bytes()],
+            &self.program_id,
+        );
+        let settlement = RewardSettlementState {
+            settlement_id: epoch_id,
+            epoch_from: epoch_id,
+            epoch_to: epoch_id,
+            proof_commitment: [0u8; 32],
+            policy_hash: [0u8; 32],
+            canonical_ledger_hash: [0u8; 32],
+            revision_no: 0,
+            reward_delta_root: root,
+            leaf_count: 0,
+            total_liability: 0,
+            settled_at: 0,
+            bump,
+        };
+        let mut settlement_bytes = Vec::new();
+        settlement.try_serialize(&mut settlement_bytes).unwrap();
+        let rent = self.banks_client.get_rent().await.unwrap();
+        let settlement_lamports = rent.minimum_balance(settlement_bytes.len());
+        let settlement_shared = AccountSharedData::create(
+            settlement_lamports,
+            settlement_bytes,
+            self.program_id,
+            false,
+            0,
+        );
+        self.set_account(&settlement_pda, &settlement_shared);
     }
 
     pub async fn get_latest_blockhash(&mut self) -> solana_sdk::hash::Hash {

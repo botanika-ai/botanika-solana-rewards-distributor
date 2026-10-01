@@ -15,6 +15,7 @@ use utils::*;
 fn claim_reward_ix(
     setup: &SetupResult,
     node_id_hash: [u8; 32],
+    settlement_id: u64,
     cumulative_amount: u64,
     proof: Vec<[u8; 32]>,
     miner_token_account: Pubkey,
@@ -25,11 +26,13 @@ fn claim_reward_ix(
         &setup.reward_distributor_pda,
         &setup.context.program_id,
     );
+    let settlement = settlement_pda(settlement_id, &setup.context.program_id);
 
     Instruction {
         program_id: setup.context.program_id,
         accounts: botanika_solana_rewards_distributor::accounts::ClaimReward {
             reward_distributor: setup.reward_distributor_pda,
+            settlement,
             claim_status,
             miner_token_account,
             token_vault: setup.token_vault.pubkey(),
@@ -41,6 +44,7 @@ fn claim_reward_ix(
         .to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::ClaimReward {
             node_id_hash,
+            settlement_id,
             cumulative_amount,
             proof,
         }
@@ -62,6 +66,7 @@ async fn test_valid_claim() {
     let claim_ix = claim_reward_ix(
         &setup,
         node_id_hash,
+        1,
         amount,
         proof,
         setup.miner_token_account.pubkey(),
@@ -99,6 +104,7 @@ async fn test_invalid_proof() {
     let claim_ix = claim_reward_ix(
         &setup,
         node_id_hash,
+        1,
         amount,
         vec![[0u8; 32]],
         setup.miner_token_account.pubkey(),
@@ -126,6 +132,7 @@ async fn test_duplicate_claim() {
     let claim_ix = claim_reward_ix(
         &setup,
         node_id_hash,
+        1,
         amount,
         proof,
         setup.miner_token_account.pubkey(),
@@ -165,6 +172,7 @@ async fn test_claim_delta() {
     let claim_ix1 = claim_reward_ix(
         &setup,
         node_id_hash,
+        1,
         amount1,
         proof1,
         setup.miner_token_account.pubkey(),
@@ -186,6 +194,7 @@ async fn test_claim_delta() {
     let claim_ix2 = claim_reward_ix(
         &setup,
         node_id_hash,
+        2,
         amount2,
         proof2,
         setup.miner_token_account.pubkey(),
@@ -231,6 +240,7 @@ async fn test_claim_two_nodes_same_miner() {
     let claim_a = claim_reward_ix(
         &setup,
         node_a,
+        1,
         amount_a,
         get_proof(leaves.clone(), index_a),
         setup.miner_token_account.pubkey(),
@@ -239,6 +249,7 @@ async fn test_claim_two_nodes_same_miner() {
     let claim_b = claim_reward_ix(
         &setup,
         node_b,
+        1,
         amount_b,
         get_proof(leaves, index_b),
         setup.miner_token_account.pubkey(),
@@ -282,6 +293,7 @@ async fn test_wrong_node_id_hash() {
     let claim_ix = claim_reward_ix(
         &setup,
         wrong_node_id_hash,
+        1,
         amount,
         get_proof(vec![leaf], 0),
         setup.miner_token_account.pubkey(),
@@ -311,6 +323,7 @@ async fn test_wrong_recipient() {
     let claim_ix = claim_reward_ix(
         &setup,
         node_id_hash,
+        1,
         amount,
         proof,
         setup.miner_token_account.pubkey(),
@@ -349,6 +362,7 @@ async fn test_wrong_mint_vault() {
         program_id: setup.context.program_id,
         accounts: botanika_solana_rewards_distributor::accounts::ClaimReward {
             reward_distributor: setup.reward_distributor_pda,
+            settlement: settlement_pda(0, &setup.context.program_id),
             claim_status,
             miner_token_account: setup.miner_token_account.pubkey(),
             token_vault: setup.token_vault.pubkey(),
@@ -360,6 +374,7 @@ async fn test_wrong_mint_vault() {
         .to_account_metas(None),
         data: botanika_solana_rewards_distributor::instruction::ClaimReward {
             node_id_hash,
+            settlement_id: 0,
             cumulative_amount: amount,
             proof,
         }
@@ -399,6 +414,7 @@ async fn test_invalid_recipient_owner() {
     let claim_ix = claim_reward_ix(
         &setup,
         node_id_hash,
+        1,
         amount,
         proof,
         wrong_token_account.pubkey(),
@@ -450,6 +466,7 @@ async fn test_wallet_change_claims_delta_only() {
     let claim_ix1 = claim_reward_ix(
         &setup,
         node_id_hash,
+        1,
         amount1,
         get_proof(vec![leaf1], 0),
         setup.miner_token_account.pubkey(),
@@ -470,6 +487,7 @@ async fn test_wallet_change_claims_delta_only() {
     let claim_ix2 = claim_reward_ix(
         &setup,
         node_id_hash,
+        2,
         amount2,
         get_proof(vec![leaf2], 0),
         second_miner_token_account.pubkey(),
@@ -506,6 +524,7 @@ async fn test_wallet_change_claims_delta_only() {
     let old_wallet_claim = claim_reward_ix(
         &setup,
         node_id_hash,
+        2,
         amount2,
         get_proof(vec![leaf2], 0),
         setup.miner_token_account.pubkey(),
