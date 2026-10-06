@@ -15,8 +15,10 @@ use crate::state::{ClaimReceipt, RewardDistributor};
 /// v1.0 §11.3 cold fallback; not a second live path).
 ///
 /// See `update_root`'s doc comment for why this is an `#[action]` handler
-/// with injected `escrow`/`escrow_auth` rather than a plain `Signer` --
-/// confirmed live against MagicBlock devnet-as 2026-09-17.
+/// with injected `escrow`/`escrow_auth` (and `caller_program`) rather than
+/// a plain `Signer`, and for the ground-truthed 6-account field order --
+/// identical pattern here, confirmed by the same fix working on
+/// `update_root` (2026-10-06 devnet test).
 #[action]
 #[derive(Accounts)]
 #[instruction(claim_nonce: u64, beneficiary: Pubkey, node_id_hash: [u8; 32], wallet_binding_id: u64)]
@@ -67,6 +69,9 @@ pub struct FinalizeClaim<'info> {
 
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
+
+    /// CHECK: see `update_root`'s identical `caller_program` doc comment.
+    pub caller_program: UncheckedAccount<'info>,
 
     /// CHECK: bound to `reward_distributor.finalize_claim_authority`
     /// (rotatable via `set_authority`) -- see `update_root`'s identical

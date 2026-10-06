@@ -27,14 +27,21 @@ pub struct SettlementInput {
 
 /// The only way this instruction can execute (Design Freeze v1 §5.1/§6.7):
 /// a Magic Action scheduled by `botanika-magicblock-contracts`'s
-/// `commit_epoch_state`, never a human keypair. Confirmed live against
-/// MagicBlock devnet-as 2026-09-17: the delegation program calls this
-/// instruction on the base layer after the ER commit lands, appending
-/// `escrow_auth`/`escrow` as the final two accounts -- there is no
-/// `root_authority: Signer` the way a human-initiated instruction would
-/// have, since a Magic Action's replayed CPI cannot mark an arbitrary
-/// program-chosen account `is_signer`; only the derived `escrow` PDA is
-/// ever a real signer here.
+/// `commit_epoch_state`, never a human keypair. There is no `root_authority:
+/// Signer` the way a human-initiated instruction would have, since a Magic
+/// Action's replayed CPI cannot mark an arbitrary program-chosen account
+/// `is_signer`; only the derived `escrow` PDA is ever a real signer here.
+///
+/// Field order ground-truthed 2026-10-06 by inspecting the actual inner CPI
+/// of a failing devnet tx (`getTransaction` with `innerInstructions`), not
+/// assumed from docs: `[reward_distributor, settlement, system_program,
+/// caller_program, escrow_auth, escrow]` -- our 3 explicit accounts (in the
+/// order `commit_epoch_state` lists them) come first, THEN the delegation
+/// program appends **three** accounts, not two: the calling program's own
+/// id (`botanika-magicblock-contracts`, new in `ephemeral-rollups-sdk`
+/// 0.17.x -- the prior "final two" comment and the troubleshooting doc's
+/// "first two" both predate this and are wrong for this SDK version),
+/// then `escrow_auth`, then `escrow`.
 #[action]
 #[derive(Accounts)]
 pub struct UpdateRoot<'info> {
@@ -54,6 +61,13 @@ pub struct UpdateRoot<'info> {
     pub settlement: Account<'info, RewardSettlementState>,
 
     pub system_program: Program<'info, System>,
+
+    /// CHECK: the scheduling program's own id (`botanika-magicblock-contracts`),
+    /// appended by the delegation program ahead of `escrow_auth`/`escrow` in
+    /// `ephemeral-rollups-sdk` 0.17.x. Not used by this handler; declared
+    /// only because the real CPI account list includes it positionally
+    /// (ground-truthed from a live devnet tx, see struct doc comment).
+    pub caller_program: UncheckedAccount<'info>,
 
     /// CHECK: bound to `reward_distributor.root_authority` (rotatable via
     /// `set_authority`) -- this is what actually restricts who can drive
