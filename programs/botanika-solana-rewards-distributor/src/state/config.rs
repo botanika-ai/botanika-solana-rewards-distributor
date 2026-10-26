@@ -13,6 +13,12 @@ pub struct RewardDistributor {
     pub pause_authority: Pubkey,
     /// Can sweep the token vault back to treasury.
     pub treasury_authority: Pubkey,
+    /// Signs `finalize_claim` (Design Freeze v1 §5.1/§7.5). Set once via
+    /// `set_authority(FinalizeClaim, escrow_pda)` to the escrow PDA derived
+    /// from `botanika-magicblock-contracts`'s own program -- from then on
+    /// only a Magic Action from that program can produce a valid signature
+    /// for `finalize_claim`, no human keypair can.
+    pub finalize_claim_authority: Pubkey,
     pub reward_mint: Pubkey,
     pub current_root: [u8; 32],
     pub epoch_id: u64,

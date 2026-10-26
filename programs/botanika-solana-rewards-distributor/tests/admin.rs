@@ -48,27 +48,10 @@ async fn test_set_authority_rotates_single_role() {
     assert_eq!(data.payout_authority, setup.authority.pubkey());
     assert_eq!(data.pause_authority, setup.authority.pubkey());
     assert_eq!(data.treasury_authority, setup.authority.pubkey());
-
-    // The old root_authority can no longer publish roots.
-    let stale_root_ix = update_root_ix(&setup, [1u8; 32], 1, dummy_settlement(1, 0, 0));
-    let stale_result = setup.context.process_transaction(&[stale_root_ix], &[&setup.authority]).await;
-    assert!(stale_result.is_err());
-
-    // The new root_authority can.
-    let fresh_root_ix = Instruction {
-        program_id,
-        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
-            reward_distributor: setup.reward_distributor_pda,
-            settlement: settlement_pda(1, &program_id),
-            root_authority: new_root_authority.pubkey(),
-            system_program: system_program::ID,
-        }.to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::UpdateRoot {
-            new_root: [1u8; 32],
-            settlement: dummy_settlement(1, 0, 0),
-        }.data(),
-    };
-    setup.context.process_transaction(&[fresh_root_ix], &[&new_root_authority]).await.unwrap();
+    // `update_root` itself is no longer a `Signer`-gated instruction --
+    // it is authorized via the delegation program's injected `escrow`/
+    // `escrow_auth`, which `reward_distributor.root_authority` (verified
+    // above) constrains. See `update_root`'s doc comment / `utils.rs`.
 }
 
 #[tokio::test]
@@ -91,6 +74,34 @@ async fn test_set_authority_unauthorized_fails() {
 
     let result = setup.context.process_transaction(&[set_authority_ix], &[&wrong_admin]).await;
     assert!(result.is_err());
+}
+
+/// Regression guard: `set_authority` previously had zero validation on
+/// `new_authority` for any role -- `admin_authority` could call
+/// `set_authority(FinalizeClaim, Pubkey::default())` and undo
+/// `initialize`'s `FinalizeClaimAuthorityRequired` guard entirely, or
+/// brick any other role (including `Admin` itself) the same way.
+#[tokio::test]
+async fn test_set_authority_rejects_default_pubkey() {
+    let mut setup = setup_test().await;
+    let program_id = setup.context.program_id;
+
+    let set_authority_ix = Instruction {
+        program_id,
+        accounts: botanika_solana_rewards_distributor::accounts::SetAuthority {
+            reward_distributor: setup.reward_distributor_pda,
+            admin_authority: setup.authority.pubkey(),
+        }
+        .to_account_metas(None),
+        data: botanika_solana_rewards_distributor::instruction::SetAuthority {
+            role: AuthorityRole::FinalizeClaim,
+            new_authority: Pubkey::default(),
+        }
+        .data(),
+    };
+
+    let result = setup.context.process_transaction(&[set_authority_ix], &[&setup.authority]).await;
+    assert!(result.is_err(), "the zero pubkey must be rejected for any role, not just at initialize time");
 }
 
 #[tokio::test]
@@ -129,29 +140,51 @@ async fn test_pause_unpause() {
     assert_eq!(data.is_paused, false);
 }
 
+/// Regression guard: `withdraw_vault` previously had no `is_paused` gate
+/// at all -- pausing the program never actually stopped `treasury_authority`
+/// from sweeping the vault, unlike `claim_reward`/`batch_payout`/
+/// `finalize_claim` which all already had this check.
 #[tokio::test]
-async fn test_authority_checks() {
+async fn test_withdraw_vault_rejected_when_paused() {
     let mut setup = setup_test().await;
     let program_id = setup.context.program_id;
-    let wrong_authority = Keypair::new();
 
-    // Try update_root with wrong root_authority
-    let update_root_ix = Instruction {
+    let pause_ix = Instruction {
         program_id,
-        accounts: botanika_solana_rewards_distributor::accounts::UpdateRoot {
+        accounts: botanika_solana_rewards_distributor::accounts::Pause {
             reward_distributor: setup.reward_distributor_pda,
-            settlement: settlement_pda(1, &program_id),
-            root_authority: wrong_authority.pubkey(),
-            system_program: system_program::ID,
-        }.to_account_metas(None),
-        data: botanika_solana_rewards_distributor::instruction::UpdateRoot {
-            new_root: [1u8; 32],
-            settlement: dummy_settlement(1, 0, 0),
-        }.data(),
+            pause_authority: setup.authority.pubkey(),
+        }
+        .to_account_metas(None),
+        data: botanika_solana_rewards_distributor::instruction::Pause {}.data(),
     };
-    let result = setup.context.process_transaction(&[update_root_ix], &[&wrong_authority]).await;
-    assert!(result.is_err());
+    setup.context.process_transaction(&[pause_ix], &[&setup.authority]).await.unwrap();
+
+    let treasury_account = Keypair::new();
+    setup
+        .context
+        .create_token_account(&treasury_account, &setup.reward_mint.pubkey(), &setup.authority.pubkey())
+        .await
+        .unwrap();
+
+    let withdraw_ix = Instruction {
+        program_id,
+        accounts: botanika_solana_rewards_distributor::accounts::WithdrawVault {
+            reward_distributor: setup.reward_distributor_pda,
+            token_vault: setup.token_vault.pubkey(),
+            reward_mint: setup.reward_mint.pubkey(),
+            treasury: treasury_account.pubkey(),
+            treasury_authority: setup.authority.pubkey(),
+            token_program: anchor_spl::token::ID,
+        }
+        .to_account_metas(None),
+        data: botanika_solana_rewards_distributor::instruction::WithdrawVault { amount: 1000 }.data(),
+    };
+
+    let result = setup.context.process_transaction(&[withdraw_ix], &[&setup.authority]).await;
+    assert!(result.is_err(), "withdraw_vault must be rejected while paused");
 }
+
 
 #[tokio::test]
 async fn test_withdraw_vault_success() {

@@ -13,6 +13,11 @@ pub struct InitializeAuthorities {
     pub payout_authority: Pubkey,
     pub pause_authority: Pubkey,
     pub treasury_authority: Pubkey,
+    /// Defaults to `admin_authority` at init time if left as the zero
+    /// pubkey; rotate to the real escrow PDA via `set_authority` once
+    /// `botanika-magicblock-contracts`'s escrow PDA is known (Design
+    /// Freeze v1 §5.1).
+    pub finalize_claim_authority: Pubkey,
 }
 
 #[derive(Accounts)]
@@ -50,12 +55,31 @@ pub fn initialize_handler(
     ctx: Context<Initialize>,
     authorities: InitializeAuthorities,
 ) -> Result<()> {
+    // All six roles must be real, non-default pubkeys at init time -- real
+    // gap found reviewing this flow: previously only
+    // `finalize_claim_authority` was guarded (this session's own fix).
+    // Leaving any of the other five as the zero pubkey bricks whatever
+    // that role gates with no recovery path -- worst case, a zeroed
+    // `admin_authority` makes `set_authority` itself permanently
+    // uncallable (its `has_one = admin_authority` would require a signer
+    // with no corresponding private key), so there would be no way to fix
+    // any role, including itself, ever again.
     let reward_distributor = &mut ctx.accounts.reward_distributor;
+    require!(authorities.admin_authority != Pubkey::default(), RewardError::AuthorityCannotBeDefault);
+    require!(authorities.root_authority != Pubkey::default(), RewardError::AuthorityCannotBeDefault);
+    require!(authorities.payout_authority != Pubkey::default(), RewardError::AuthorityCannotBeDefault);
+    require!(authorities.pause_authority != Pubkey::default(), RewardError::AuthorityCannotBeDefault);
+    require!(authorities.treasury_authority != Pubkey::default(), RewardError::AuthorityCannotBeDefault);
     reward_distributor.admin_authority = authorities.admin_authority;
     reward_distributor.root_authority = authorities.root_authority;
     reward_distributor.payout_authority = authorities.payout_authority;
     reward_distributor.pause_authority = authorities.pause_authority;
     reward_distributor.treasury_authority = authorities.treasury_authority;
+    require!(
+        authorities.finalize_claim_authority != Pubkey::default(),
+        RewardError::FinalizeClaimAuthorityRequired
+    );
+    reward_distributor.finalize_claim_authority = authorities.finalize_claim_authority;
     reward_distributor.reward_mint = ctx.accounts.reward_mint.key();
     reward_distributor.token_vault = ctx.accounts.token_vault.key();
     reward_distributor.bump = ctx.bumps.reward_distributor;

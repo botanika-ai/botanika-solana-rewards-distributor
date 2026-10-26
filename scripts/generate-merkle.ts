@@ -140,9 +140,13 @@ async function main() {
     const wallet2 = config.MINER_2.publicKey;
 
     // 2. Resolve on-chain distributor state — the leaf domain binds
-    // program_id / distributor / reward_mint / epoch_id (P1-RWD-07), and the
-    // epoch_id used must be the one this root will have *after* update-root
-    // runs (current epoch_id + 1), since claim_reward reads it post-update.
+    // program_id / distributor / reward_mint / settlement_id (P1-RWD-07).
+    // `claim_reward` now verifies against the specific settlement's own
+    // `reward_delta_root` (RewardSettlementState, keyed by settlement_id),
+    // not a mutable `current_root` field (P1-RWD-04) -- so the settlement_id
+    // used here (current epoch_id + 1, matching what update_root will set
+    // settlement_id to) must be passed back into claim_reward's
+    // `settlement_id` argument, and remains valid indefinitely afterward.
     const clusterUrl = config.CLUSTER_URL || resolveClusterUrl();
     const connection = new Connection(clusterUrl, "confirmed");
 
@@ -231,7 +235,11 @@ async function main() {
     const outputData = {
       MERKLE_ROOT: rootArray,
       MERKLE_ROOT_HEX: rootHex,
+      // Same value, two keys: NEXT_EPOCH_ID kept for backward compat,
+      // SETTLEMENT_ID is the name claim_reward's instruction arg actually
+      // uses now (P1-RWD-04 -- see comment above).
       NEXT_EPOCH_ID: nextEpochId.toString(),
+      SETTLEMENT_ID: nextEpochId.toString(),
       LEAF_COUNT: rewards.length,
       TOTAL_LIABILITY: totalLiability,
       PROOFS: Object.fromEntries(

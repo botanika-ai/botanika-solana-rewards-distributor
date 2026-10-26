@@ -13,6 +13,7 @@ pub enum AuthorityRole {
     Payout,
     Pause,
     Treasury,
+    FinalizeClaim,
 }
 
 #[derive(Accounts)]
@@ -28,11 +29,22 @@ pub struct SetAuthority<'info> {
     pub admin_authority: Signer<'info>,
 }
 
+/// `new_authority` is never allowed to be the zero pubkey for any role --
+/// real gap found reviewing this flow: `initialize_handler`'s
+/// `FinalizeClaimAuthorityRequired` check (added this session) only
+/// guarded the role's *initial* value; `admin_authority` could later call
+/// `set_authority(FinalizeClaim, Pubkey::default())` and fully undo it
+/// (and likewise brick any other role the same way -- a zeroed
+/// `admin_authority` in particular would make this very instruction
+/// permanently uncallable again, since its own `has_one = admin_authority`
+/// would then require a signer with no corresponding private key).
 pub fn set_authority_handler(
     ctx: Context<SetAuthority>,
     role: AuthorityRole,
     new_authority: Pubkey,
 ) -> Result<()> {
+    require!(new_authority != Pubkey::default(), RewardError::AuthorityCannotBeDefault);
+
     let reward_distributor = &mut ctx.accounts.reward_distributor;
     match role {
         AuthorityRole::Admin => reward_distributor.admin_authority = new_authority,
@@ -40,6 +52,7 @@ pub fn set_authority_handler(
         AuthorityRole::Payout => reward_distributor.payout_authority = new_authority,
         AuthorityRole::Pause => reward_distributor.pause_authority = new_authority,
         AuthorityRole::Treasury => reward_distributor.treasury_authority = new_authority,
+        AuthorityRole::FinalizeClaim => reward_distributor.finalize_claim_authority = new_authority,
     }
 
     emit!(crate::events::AuthorityUpdated {

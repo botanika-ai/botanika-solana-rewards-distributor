@@ -34,4 +34,14 @@ pub enum RewardError {
     InvalidClaimStatusPda,
     #[msg("Settlement epoch_from must be <= epoch_to")]
     InvalidSettlementRange,
+    #[msg("Settlement account's settlement_id does not match the id requested")]
+    SettlementIdMismatch,
+    #[msg("finalize_claim_authority must be set explicitly at initialize time, not left as the default pubkey (which would otherwise silently fall back to admin_authority -- a human key, not the Magic Action escrow PDA)")]
+    FinalizeClaimAuthorityRequired,
+    #[msg("Settlement account is not yet old enough to close (minimum retention window not elapsed)")]
+    SettlementTooRecentToClose,
+    #[msg("An authority role cannot be set to the zero pubkey -- this would permanently brick whatever that role gates (e.g. a zeroed admin_authority can never again call set_authority to fix itself)")]
+    AuthorityCannotBeDefault,
+    #[msg("BatchRecord is not yet old enough to close (minimum retention window not elapsed)")]
+    BatchRecordTooRecentToClose,
 }

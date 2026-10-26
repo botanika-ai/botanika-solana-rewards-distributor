@@ -4,6 +4,12 @@ use anchor_spl::token_interface::{transfer_checked, Mint, TokenAccount, TokenInt
 use crate::error::RewardError;
 use crate::state::RewardDistributor;
 
+/// Gated on `!is_paused` same as `claim_reward`/`batch_payout`/
+/// `finalize_claim` -- real gap found reviewing this flow: PAD v1.0 §13
+/// explicitly says to "consider pause ... for treasury withdrawal", but
+/// this instruction moved funds out of the exact same vault as those three
+/// with no pause check at all, so pausing the program never actually
+/// stopped `treasury_authority` from sweeping it.
 #[derive(Accounts)]
 pub struct WithdrawVault<'info> {
     #[account(
@@ -11,6 +17,7 @@ pub struct WithdrawVault<'info> {
         seeds = [RewardDistributor::SEED],
         bump = reward_distributor.bump,
         has_one = treasury_authority @ RewardError::Unauthorized,
+        constraint = !reward_distributor.is_paused @ RewardError::Paused,
     )]
     pub reward_distributor: Account<'info, RewardDistributor>,
 

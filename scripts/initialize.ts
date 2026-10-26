@@ -17,6 +17,22 @@ async function main() {
     }
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     const tokenMint = new PublicKey(config.TOKEN_MINT);
+    // finalize_claim_authority (Design Freeze v1 §5.1) must be the
+    // escrow_auth PDA of botanika-magicblock-contracts's OWN program id,
+    // never a human key or the zero pubkey -- `initialize_handler` now
+    // rejects the zero pubkey outright (previously silently fell back to
+    // admin_authority, a real gap: a forgotten config value would have
+    // left `finalize_claim`'s only on-chain gate pointed at a human-signable
+    // key instead of the Magic Action escrow PDA). Mirrors
+    // `initialize-production.ts`'s identical derivation.
+    if (!config.MAGICBLOCK_PROGRAM_ID) {
+      throw new Error(
+        "config.json is missing MAGICBLOCK_PROGRAM_ID -- botanika-magicblock-contracts's deployed program id is required to derive finalize_claim_authority (escrow_auth PDA)."
+      );
+    }
+    const magicblockProgramId = new PublicKey(config.MAGICBLOCK_PROGRAM_ID);
+    const [escrowAuthPda] = PublicKey.findProgramAddressSync([Buffer.from("escrow_auth")], magicblockProgramId);
+    console.log(`Derived escrow_auth PDA (finalize_claim_authority): ${escrowAuthPda.toBase58()}`);
     const clusterUrl = config.CLUSTER_URL || resolveClusterUrl();
 
     const idlPath = path.resolve(
@@ -57,15 +73,21 @@ async function main() {
 
     // P0-RWD-02: roles are separated on-chain so a single compromised key
     // cannot move the root, pause the program, AND sweep the vault. This
-    // script still bootstraps all five to the deployer wallet for the POC —
-    // production deployments must rotate each role to a distinct
-    // multisig/timelock wallet via set_authority right after this call.
+    // script still bootstraps the first five to the deployer wallet for
+    // the POC -- production deployments must rotate each role to a
+    // distinct multisig/timelock wallet via set_authority right after this
+    // call. `finalize_claim_authority` is NOT bootstrapped to the wallet
+    // like the others: it must be the escrow PDA from the very first
+    // transaction, since `finalize_claim` would otherwise be permanently
+    // uncallable (wrong type of key entirely, not merely a weaker one --
+    // see the derivation above).
     const authorities = {
       adminAuthority: walletKeypair.publicKey,
       rootAuthority: walletKeypair.publicKey,
       payoutAuthority: walletKeypair.publicKey,
       pauseAuthority: walletKeypair.publicKey,
       treasuryAuthority: walletKeypair.publicKey,
+      finalizeClaimAuthority: escrowAuthPda,
     };
 
     console.log("Sending initialize transaction...");
