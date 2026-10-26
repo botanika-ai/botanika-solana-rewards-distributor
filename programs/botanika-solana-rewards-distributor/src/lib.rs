@@ -8,7 +8,7 @@ pub mod utils;
 
 use instructions::*;
 
-declare_id!("8QEAdNTRWKvLiCKgGXFp3eiKKeno6MpjAWirp1xCh6Er");
+declare_id!("82iqRG1Wh4ndMk64DrEgUWCykfwbUdhobFkJ1ppJUnQ4");
 
 #[program]
 pub mod botanika_solana_rewards_distributor {
@@ -62,6 +62,21 @@ pub mod botanika_solana_rewards_distributor {
 
     pub fn withdraw_vault(ctx: Context<WithdrawVault>, amount: u64) -> Result<()> {
         withdraw_vault_handler(ctx, amount)
+    }
+
+    /// Closes a `RewardSettlementState` no longer needed, reclaiming its
+    /// rent -- see `close_settlement.rs`'s doc comment for the real gap
+    /// this closes and the retention-window safety reasoning.
+    pub fn close_settlement(ctx: Context<CloseSettlement>) -> Result<()> {
+        close_settlement_handler(ctx)
+    }
+
+    /// Closes a `BatchRecord` no longer needed, reclaiming its rent --
+    /// see `close_batch_record.rs`'s doc comment for why this is safe
+    /// (unlike `ClaimReceipt`/`ClaimStatus`, deliberately not given a
+    /// close instruction).
+    pub fn close_batch_record(ctx: Context<CloseBatchRecord>) -> Result<()> {
+        close_batch_record_handler(ctx)
     }
 
     /// Target claim flow (Design Freeze v1 §3.10/§6.4): signer is the

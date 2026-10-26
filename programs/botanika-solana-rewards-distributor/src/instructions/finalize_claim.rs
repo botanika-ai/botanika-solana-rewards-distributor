@@ -5,7 +5,7 @@ use ephemeral_rollups_sdk::pda::ephemeral_balance_pda_from_payer;
 
 use crate::error::RewardError;
 use crate::instructions::update_root::ACTION_ESCROW_INDEX;
-use crate::state::{ClaimReceipt, RewardDistributor};
+use crate::state::{ClaimReceipt, RewardDistributor, RewardSettlementState};
 
 /// The only claim mechanism in the target design (Design Freeze v1
 /// §3.10/§6.4): triggered by a Magic Action from
@@ -19,9 +19,22 @@ use crate::state::{ClaimReceipt, RewardDistributor};
 /// a plain `Signer`, and for the ground-truthed 6-account field order --
 /// identical pattern here, confirmed by the same fix working on
 /// `update_root` (2026-10-06 devnet test).
+///
+/// `settlement` closes a real gap found reviewing this flow: previously
+/// `settlement_id` was accepted as a bare argument, stored on
+/// `ClaimReceipt` for audit, but never checked against anything -- a
+/// caller could reference a `settlement_id` that was never actually
+/// published via `update_root` at all. Mirrors `claim_reward.rs`'s
+/// identical `settlement` field exactly (that instruction already needed
+/// this same binding for its own Merkle-proof verification, same
+/// `RewardSettlementState` account, same `SettlementIdMismatch` guard).
+/// This does NOT verify `amount` cryptographically (there is deliberately
+/// no per-leaf Merkle proof in this claim path -- see the module doc
+/// comment above); it closes the narrower but real gap that `settlement_id`
+/// itself was previously unconstrained to any actually-published root.
 #[action]
 #[derive(Accounts)]
-#[instruction(claim_nonce: u64, beneficiary: Pubkey, node_id_hash: [u8; 32], wallet_binding_id: u64)]
+#[instruction(claim_nonce: u64, beneficiary: Pubkey, node_id_hash: [u8; 32], wallet_binding_id: u64, amount: u64, reward_state_hash: [u8; 32], settlement_id: u64)]
 pub struct FinalizeClaim<'info> {
     #[account(
         seeds = [RewardDistributor::SEED],
@@ -29,8 +42,16 @@ pub struct FinalizeClaim<'info> {
         constraint = !reward_distributor.is_paused @ RewardError::Paused,
     )]
     // Boxed: `try_accounts` for this struct overflowed the SBF VM's 4 KiB
-    // stack frame by 8 bytes without it (confirmed via `cargo build-sbf`).
+    // stack frame by 8 bytes without it (confirmed via `cargo build-sbf`),
+    // same fix `claim_reward.rs`'s identical comment already applies.
     pub reward_distributor: Box<Account<'info, RewardDistributor>>,
+
+    #[account(
+        seeds = [RewardSettlementState::SEED, &settlement_id.to_le_bytes()],
+        bump = settlement.bump,
+        constraint = settlement.settlement_id == settlement_id @ RewardError::SettlementIdMismatch,
+    )]
+    pub settlement: Account<'info, RewardSettlementState>,
 
     #[account(
         init,

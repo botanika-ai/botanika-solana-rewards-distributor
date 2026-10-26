@@ -29,11 +29,22 @@ pub struct SetAuthority<'info> {
     pub admin_authority: Signer<'info>,
 }
 
+/// `new_authority` is never allowed to be the zero pubkey for any role --
+/// real gap found reviewing this flow: `initialize_handler`'s
+/// `FinalizeClaimAuthorityRequired` check (added this session) only
+/// guarded the role's *initial* value; `admin_authority` could later call
+/// `set_authority(FinalizeClaim, Pubkey::default())` and fully undo it
+/// (and likewise brick any other role the same way -- a zeroed
+/// `admin_authority` in particular would make this very instruction
+/// permanently uncallable again, since its own `has_one = admin_authority`
+/// would then require a signer with no corresponding private key).
 pub fn set_authority_handler(
     ctx: Context<SetAuthority>,
     role: AuthorityRole,
     new_authority: Pubkey,
 ) -> Result<()> {
+    require!(new_authority != Pubkey::default(), RewardError::AuthorityCannotBeDefault);
+
     let reward_distributor = &mut ctx.accounts.reward_distributor;
     match role {
         AuthorityRole::Admin => reward_distributor.admin_authority = new_authority,

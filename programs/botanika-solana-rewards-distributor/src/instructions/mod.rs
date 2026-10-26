@@ -1,5 +1,7 @@
 pub mod batch_payout;
 pub mod claim_reward;
+pub mod close_batch_record;
+pub mod close_settlement;
 pub mod finalize_claim;
 pub mod initialize;
 pub mod pause;
@@ -10,6 +12,8 @@ pub mod withdraw_vault;
 
 pub use batch_payout::*;
 pub use claim_reward::*;
+pub use close_batch_record::*;
+pub use close_settlement::*;
 pub use finalize_claim::*;
 pub use initialize::*;
 pub use pause::*;

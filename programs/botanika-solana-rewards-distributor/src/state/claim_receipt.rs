@@ -14,6 +14,17 @@ use anchor_lang::prelude::*;
 /// omitted -- a program cannot read its own transaction signature during
 /// execution; that linkage is kept off-chain via the `ClaimFinalized` event
 /// reward-service persists alongside its own settlement row.
+///
+/// Deliberately given NO close instruction (unlike `RewardSettlementState`/
+/// `BatchRecord`, which both got `close_*` instructions this session) --
+/// this PDA's mere existence, keyed by `(beneficiary, node_id_hash,
+/// wallet_binding_id, claim_nonce)`, IS `finalize_claim`'s only replay
+/// guard (no Merkle proof is checked there, per this struct's own doc
+/// comment above). Closing and later reusing the exact same tuple would
+/// let a second `finalize_claim` pay out again for a nonce already paid.
+/// Same documented-not-silent deferral as `tick_archive_epoch.rs` not
+/// closing `ProofPage` in `botanika-magicblock-contracts` -- rent growth
+/// here is accepted, not an oversight.
 #[account]
 #[derive(InitSpace)]
 pub struct ClaimReceipt {
