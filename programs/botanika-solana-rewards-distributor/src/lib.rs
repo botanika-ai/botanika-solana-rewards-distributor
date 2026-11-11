@@ -8,7 +8,7 @@ pub mod utils;
 
 use instructions::*;
 
-declare_id!("8QEAdNTRWKvLiCKgGXFp3eiKKeno6MpjAWirp1xCh6Er");
+declare_id!("GqXEoEGQAMKePyu3PfYnC2tPZKBGqYtsBiE3gU66QDkJ");
 
 #[program]
 pub mod botanika_solana_rewards_distributor {
@@ -81,8 +81,8 @@ pub mod botanika_solana_rewards_distributor {
 
     /// Target claim flow (Design Freeze v1 §3.10/§6.4): signer is the
     /// escrow PDA a Magic Action from `botanika-magicblock-contracts`
-    /// signs for, not a human keypair. `claim_reward` above is kept
-    /// unmodified as the PAD v1.0 §11.3 cold fallback.
+    /// signs for, not a human keypair. `claim_reward`/`batch_payout` are
+    /// the legacy cold fallback, disabled unless `legacy_claims_enabled`.
     #[allow(clippy::too_many_arguments)]
     pub fn finalize_claim(
         ctx: Context<FinalizeClaim>,
@@ -104,5 +104,14 @@ pub mod botanika_solana_rewards_distributor {
             reward_state_hash,
             settlement_id,
         )
+    }
+
+    /// Admin-only toggle for the legacy Merkle payout paths
+    /// (`claim_reward`, `batch_payout`); disabled by default.
+    pub fn set_legacy_claims_enabled(
+        ctx: Context<SetLegacyClaimsEnabled>,
+        enabled: bool,
+    ) -> Result<()> {
+        set_legacy_claims_enabled_handler(ctx, enabled)
     }
 }

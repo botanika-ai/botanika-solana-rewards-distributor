@@ -25,6 +25,7 @@ pub struct BatchPayout<'info> {
         bump = reward_distributor.bump,
         has_one = payout_authority @ RewardError::Unauthorized,
         constraint = !reward_distributor.is_paused @ RewardError::Paused,
+        constraint = reward_distributor.legacy_claims_enabled @ RewardError::LegacyClaimsDisabled,
     )]
     pub reward_distributor: Account<'info, RewardDistributor>,
 

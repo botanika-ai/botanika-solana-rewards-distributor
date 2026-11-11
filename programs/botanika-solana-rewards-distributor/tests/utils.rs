@@ -294,6 +294,42 @@ pub async fn setup_test() -> SetupResult {
     }
 }
 
+pub fn set_legacy_claims_enabled_ix(setup: &SetupResult, admin: Pubkey, enabled: bool) -> Instruction {
+    Instruction {
+        program_id: setup.context.program_id,
+        accounts: botanika_solana_rewards_distributor::accounts::SetLegacyClaimsEnabled {
+            reward_distributor: setup.reward_distributor_pda,
+            admin_authority: admin,
+        }.to_account_metas(None),
+        data: botanika_solana_rewards_distributor::instruction::SetLegacyClaimsEnabled { enabled }.data(),
+    }
+}
+
+/// Legacy `claim_reward`/`batch_payout` are disabled by default; tests that
+/// exercise them turn the flag on through the real admin instruction first.
+pub async fn enable_legacy_claims(setup: &mut SetupResult) {
+    let ix = set_legacy_claims_enabled_ix(setup, setup.authority.pubkey(), true);
+    let authority = Keypair::from_bytes(&setup.authority.to_bytes()).unwrap();
+    setup.context.process_transaction(&[ix], &[&authority]).await.unwrap();
+}
+
+/// Asserts `result` failed with the given program error at instruction 0.
+pub fn assert_program_error(
+    result: std::result::Result<(), BanksClientError>,
+    expected: botanika_solana_rewards_distributor::error::RewardError,
+) {
+    let code: u32 = expected.into();
+    match result {
+        Err(BanksClientError::TransactionError(
+            solana_sdk::transaction::TransactionError::InstructionError(
+                0,
+                solana_sdk::instruction::InstructionError::Custom(actual),
+            ),
+        )) => assert_eq!(actual, code),
+        other => panic!("expected custom error {code}, got {other:?}"),
+    }
+}
+
 pub fn hash_node_id(node_id: &str) -> [u8; 32] {
     keccak::hash(node_id.as_bytes()).0
 }

@@ -44,4 +44,6 @@ pub enum RewardError {
     AuthorityCannotBeDefault,
     #[msg("BatchRecord is not yet old enough to close (minimum retention window not elapsed)")]
     BatchRecordTooRecentToClose,
+    #[msg("Legacy Merkle claims (claim_reward/batch_payout) are disabled; use the MagicBlock finalize_claim flow")]
+    LegacyClaimsDisabled,
 }

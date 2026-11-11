@@ -30,8 +30,14 @@ pub struct RewardDistributor {
     pub total_claimed: u64,
     /// Cumulative amount paid out via authority-driven batch_payout.
     pub total_batch_distributed: u64,
-    #[max_len(64)]
-    pub _reserved: [u8; 64],
+    /// Gates the legacy Merkle payout paths (`claim_reward`, `batch_payout`).
+    /// Occupies what was the first `_reserved` byte, so existing accounts
+    /// read it as `false`: the MagicBlock `finalize_claim` flow is the only
+    /// payout path unless `admin_authority` re-enables it via
+    /// `set_legacy_claims_enabled`.
+    pub legacy_claims_enabled: bool,
+    #[max_len(63)]
+    pub _reserved: [u8; 63],
 }
 
 impl RewardDistributor {

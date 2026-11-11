@@ -68,3 +68,9 @@ pub struct ClaimFinalized {
     pub settlement_id: u64,
     pub timestamp: i64,
 }
+
+#[event]
+pub struct LegacyClaimsToggled {
+    pub enabled: bool,
+    pub updated_by: Pubkey,
+}

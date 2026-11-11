@@ -55,6 +55,7 @@ fn batch_payout_ix(
 #[tokio::test]
 async fn test_batch_payout_success() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
 
@@ -141,6 +142,7 @@ async fn test_batch_payout_success() {
 #[tokio::test]
 async fn test_batch_payout_duplicate_batch_id_fails() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
 
     let recipient = Keypair::new();
@@ -184,6 +186,7 @@ async fn test_batch_payout_duplicate_batch_id_fails() {
 #[tokio::test]
 async fn test_batch_payout_multiple_recipients() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
 
     let node_a = hash_node_id(TEST_NODE_ID);
     let node_b = hash_node_id(TEST_NODE_ID_2);
@@ -254,6 +257,7 @@ async fn test_batch_payout_multiple_recipients() {
 #[tokio::test]
 async fn test_batch_payout_cumulative() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
 
     let recipient = Keypair::new();
@@ -335,6 +339,7 @@ async fn test_batch_payout_cumulative() {
 #[tokio::test]
 async fn test_batch_payout_empty_fails() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let ix = batch_payout_ix(&setup, 1, vec![]);
     let result = setup
         .context
@@ -346,6 +351,7 @@ async fn test_batch_payout_empty_fails() {
 #[tokio::test]
 async fn test_batch_payout_too_large_fails() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let mut payouts = vec![];
     for _ in 0..11 {
         payouts.push(PayoutItem {
@@ -365,6 +371,7 @@ async fn test_batch_payout_too_large_fails() {
 #[tokio::test]
 async fn test_batch_payout_unauthorized_fails() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let wrong_authority = Keypair::new();
 
     let payouts = vec![PayoutItem {
@@ -413,6 +420,7 @@ async fn test_batch_payout_unauthorized_fails() {
 #[tokio::test]
 async fn test_batch_payout_wrong_recipient_fails() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
 
     // recipient in the instruction payload does not match the token account
@@ -466,6 +474,7 @@ async fn test_batch_payout_wrong_recipient_fails() {
 #[tokio::test]
 async fn test_batch_payout_paused_fails() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let program_id = setup.context.program_id;
 
     // Pause distributor
@@ -495,6 +504,7 @@ async fn test_batch_payout_paused_fails() {
 #[tokio::test]
 async fn test_batch_payout_lower_cumulative_skipped() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
 
     let recipient = Keypair::new();
@@ -572,4 +582,39 @@ async fn test_batch_payout_lower_cumulative_skipped() {
     let distributor_data =
         RewardDistributor::try_deserialize(&mut distributor_account.data.as_slice()).unwrap();
     assert_eq!(distributor_data.total_batch_distributed, 1000);
+}
+
+#[tokio::test]
+async fn test_batch_payout_rejected_when_legacy_claims_disabled_then_allowed_after_toggle() {
+    let mut setup = setup_test().await;
+    let recipient = Keypair::new();
+    let recipient_token_account = Keypair::new();
+    setup
+        .context
+        .create_token_account(&recipient_token_account, &setup.reward_mint.pubkey(), &recipient.pubkey())
+        .await
+        .unwrap();
+
+    let payouts = vec![PayoutItem {
+        recipient: recipient_token_account.pubkey(),
+        node_id_hash: hash_node_id(TEST_NODE_ID),
+        cumulative_amount: 100,
+    }];
+
+    let ix = batch_payout_ix(&setup, 1, payouts);
+    let result = setup
+        .context
+        .process_transaction(&[ix.clone()], &[&setup.authority])
+        .await;
+    assert_program_error(
+        result,
+        botanika_solana_rewards_distributor::error::RewardError::LegacyClaimsDisabled,
+    );
+
+    enable_legacy_claims(&mut setup).await;
+    setup
+        .context
+        .process_transaction(&[ix], &[&setup.authority])
+        .await
+        .unwrap();
 }

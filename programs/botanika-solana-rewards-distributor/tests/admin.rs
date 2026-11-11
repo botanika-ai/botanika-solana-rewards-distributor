@@ -339,3 +339,40 @@ async fn test_withdraw_vault_invalid_amount() {
     let result = setup.context.process_transaction(&[withdraw_ix], &[&setup.authority]).await;
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn test_legacy_claims_disabled_by_default_and_admin_toggle() {
+    let mut setup = setup_test().await;
+    let read_flag = |data: Vec<u8>| {
+        RewardDistributor::try_deserialize(&mut data.as_slice())
+            .unwrap()
+            .legacy_claims_enabled
+    };
+    let account = setup.context.banks_client.get_account(setup.reward_distributor_pda).await.unwrap().unwrap();
+    assert!(!read_flag(account.data));
+
+    enable_legacy_claims(&mut setup).await;
+    let account = setup.context.banks_client.get_account(setup.reward_distributor_pda).await.unwrap().unwrap();
+    assert!(read_flag(account.data));
+
+    let ix = set_legacy_claims_enabled_ix(&setup, setup.authority.pubkey(), false);
+    setup.context.process_transaction(&[ix], &[&setup.authority]).await.unwrap();
+    let account = setup.context.banks_client.get_account(setup.reward_distributor_pda).await.unwrap().unwrap();
+    assert!(!read_flag(account.data));
+}
+
+#[tokio::test]
+async fn test_set_legacy_claims_enabled_rejected_for_non_admin() {
+    let mut setup = setup_test().await;
+    let wrong_admin = Keypair::new();
+
+    let ix = set_legacy_claims_enabled_ix(&setup, wrong_admin.pubkey(), true);
+    let result = setup.context.process_transaction(&[ix], &[&wrong_admin]).await;
+    assert_program_error(
+        result,
+        botanika_solana_rewards_distributor::error::RewardError::Unauthorized,
+    );
+
+    let account = setup.context.banks_client.get_account(setup.reward_distributor_pda).await.unwrap().unwrap();
+    assert!(!RewardDistributor::try_deserialize(&mut account.data.as_slice()).unwrap().legacy_claims_enabled);
+}

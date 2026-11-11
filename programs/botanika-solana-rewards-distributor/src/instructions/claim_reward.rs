@@ -37,6 +37,7 @@ pub struct ClaimReward<'info> {
         seeds = [RewardDistributor::SEED],
         bump = reward_distributor.bump,
         constraint = !reward_distributor.is_paused @ RewardError::Paused,
+        constraint = reward_distributor.legacy_claims_enabled @ RewardError::LegacyClaimsDisabled,
     )]
     // Boxed: adding `settlement` pushed `try_accounts` for this struct over
     // the SBF VM's 4 KiB stack frame (confirmed via `cargo build-sbf`),

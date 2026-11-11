@@ -55,6 +55,7 @@ fn claim_reward_ix(
 #[tokio::test]
 async fn test_valid_claim() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
@@ -94,6 +95,7 @@ async fn test_valid_claim() {
 #[tokio::test]
 async fn test_invalid_proof() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
@@ -121,6 +123,7 @@ async fn test_invalid_proof() {
 #[tokio::test]
 async fn test_duplicate_claim() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
@@ -160,6 +163,7 @@ async fn test_duplicate_claim() {
 #[tokio::test]
 async fn test_claim_delta() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
 
     let amount1 = 1000u64;
@@ -221,6 +225,7 @@ async fn test_claim_delta() {
 #[tokio::test]
 async fn test_claim_two_nodes_same_miner() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_a = hash_node_id(TEST_NODE_ID);
     let node_b = hash_node_id(TEST_NODE_ID_2);
 
@@ -282,6 +287,7 @@ async fn test_claim_two_nodes_same_miner() {
 #[tokio::test]
 async fn test_wrong_node_id_hash() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let wrong_node_id_hash = hash_node_id("wrong-node");
     let amount = 1000u64;
@@ -310,6 +316,7 @@ async fn test_wrong_node_id_hash() {
 #[tokio::test]
 async fn test_wrong_recipient() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
@@ -340,6 +347,7 @@ async fn test_wrong_recipient() {
 #[tokio::test]
 async fn test_wrong_mint_vault() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let wrong_mint = Keypair::new();
     setup
         .context
@@ -391,6 +399,7 @@ async fn test_wrong_mint_vault() {
 #[tokio::test]
 async fn test_invalid_recipient_owner() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
     let amount = 1000u64;
     let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
@@ -431,6 +440,7 @@ async fn test_invalid_recipient_owner() {
 #[tokio::test]
 async fn test_wallet_change_claims_delta_only() {
     let mut setup = setup_test().await;
+    enable_legacy_claims(&mut setup).await;
     let node_id_hash = hash_node_id(TEST_NODE_ID);
 
     let first_miner = setup.miner.insecure_clone();
@@ -535,4 +545,40 @@ async fn test_wallet_change_claims_delta_only() {
         .process_transaction(&[old_wallet_claim], &[&first_miner])
         .await;
     assert!(old_wallet_result.is_err());
+}
+
+#[tokio::test]
+async fn test_claim_rejected_when_legacy_claims_disabled_then_allowed_after_toggle() {
+    let mut setup = setup_test().await;
+    let node_id_hash = hash_node_id(TEST_NODE_ID);
+    let amount = 1000u64;
+    let leaf = compute_leaf(&setup, 1, setup.miner.pubkey(), node_id_hash, amount);
+    let root = compute_root(vec![leaf]);
+    setup.context.set_reward_distributor_root(setup.reward_distributor_pda, root, 1).await;
+
+    let claim_ix = claim_reward_ix(
+        &setup,
+        node_id_hash,
+        1,
+        amount,
+        get_proof(vec![leaf], 0),
+        setup.miner_token_account.pubkey(),
+        setup.miner.pubkey(),
+    );
+
+    let result = setup
+        .context
+        .process_transaction(&[claim_ix.clone()], &[&setup.miner])
+        .await;
+    assert_program_error(
+        result,
+        botanika_solana_rewards_distributor::error::RewardError::LegacyClaimsDisabled,
+    );
+
+    enable_legacy_claims(&mut setup).await;
+    setup
+        .context
+        .process_transaction(&[claim_ix], &[&setup.miner])
+        .await
+        .unwrap();
 }
