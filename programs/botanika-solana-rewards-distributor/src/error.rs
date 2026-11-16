@@ -46,4 +46,18 @@ pub enum RewardError {
     BatchRecordTooRecentToClose,
     #[msg("Legacy Merkle claims (claim_reward/batch_payout) are disabled; use the MagicBlock finalize_claim flow")]
     LegacyClaimsDisabled,
+    #[msg("Claim lock has not reached its unlock_at yet")]
+    LockNotUnlocked,
+    #[msg("Requested amount exceeds the claim lock's remaining (amount - withdrawn)")]
+    LockAmountExceeded,
+    #[msg("Total withdrawn from locks is below the minimum per withdraw_unlocked (100 BONSAI)")]
+    BelowMinimumWithdraw,
+    #[msg("Account is not a valid ClaimLock PDA of this program")]
+    InvalidClaimLock,
+    #[msg("The same ClaimLock was passed more than once")]
+    DuplicateClaimLock,
+    #[msg("Provided lock vault does not match configured lock_vault")]
+    InvalidLockVault,
+    #[msg("Too many claim locks in one withdraw_unlocked (max 16)")]
+    TooManyLocks,
 }

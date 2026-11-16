@@ -612,6 +612,7 @@ async fn test_batch_payout_rejected_when_legacy_claims_disabled_then_allowed_aft
     );
 
     enable_legacy_claims(&mut setup).await;
+    setup.context.refresh_blockhash().await;
     setup
         .context
         .process_transaction(&[ix], &[&setup.authority])

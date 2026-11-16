@@ -94,7 +94,7 @@ npx ts-node scripts/create-token.ts
 *Đầu ra:* file `scripts/config.json` được khởi tạo chứa các khóa `CLUSTER_URL`, `TOKEN_MINT`, `ADMIN_TOKEN_ACCOUNT`, `INITIAL_SUPPLY`.
 
 ### 2. Khởi Tạo Reward Distributor
-Script này đọc cấu hình token từ `config.json`, tự động lấy Program ID từ file IDL đã được biên dịch, sau đó gửi giao dịch `initialize` lên on-chain để tạo Reward Distributor PDA và một Token Vault mới.
+Script này đọc cấu hình token từ `config.json`, tự động lấy Program ID từ file IDL đã được biên dịch, sau đó gửi giao dịch `initialize` lên on-chain để tạo Reward Distributor PDA, một Token Vault và một Lock Vault mới.
 ```bash
 npx ts-node scripts/initialize.ts
 ```
@@ -102,6 +102,7 @@ npx ts-node scripts/initialize.ts
 * `REWARD_DISTRIBUTOR_PDA`: Địa chỉ PDA quản lý phân phối.
 * `TOKEN_VAULT`: Địa chỉ kho chứa token phần thưởng.
 * `TOKEN_VAULT_SECRET`: Private key của vault (được ký lúc khởi tạo).
+* `LOCK_VAULT`: Địa chỉ kho giữ các claim đã finalize trong thời gian khoá 60 ngày (xem mục "Luồng Claim Chính" bên dưới).
 * `PROGRAM_ID`: Địa chỉ Program thực tế.
 
 ### 3. Chuyển Token vào Vault của Contract
@@ -136,16 +137,41 @@ npx ts-node scripts/view-state.ts
 
 ---
 
-## 🛠️ Quá Trình Nhận Thưởng (Claim Reward) Cho Miners
+## 🔐 Luồng Claim Chính: `finalize_claim` → Lock 60 ngày → `withdraw_unlocked`
 
-Khi hệ thống đã sẵn sàng (đã nạp token vào Vault và đã cập nhật Merkle Root lên on-chain), các thợ đào (Miners) có thể nhận thưởng bằng cách gọi transaction `claim_reward` trên client của họ:
+`finalize_claim` (chỉ chạy được qua Magic Action từ `botanika-magicblock-contracts`'s
+`commit_reward_balance`) **không chuyển token thẳng vào ví beneficiary** nữa:
+
+1. Chuyển `amount` từ `token_vault` sang `lock_vault` (token account do Reward Distributor PDA làm authority).
+2. Tạo `ClaimReceipt` (`paid_at` = thời điểm finalize) và một `ClaimLock` riêng cho claim đó
+   (seed `["claim_lock", claim_receipt]`) với `unlock_at = locked_at + 5_184_000` giây (60 ngày, theo clock của chain).
+3. Cộng `RewardDistributor.total_locked`.
+
+Thứ tự account của `finalize_claim`: `reward_distributor (mut), settlement, claim_receipt (init), claim_lock (init),
+token_vault (mut), lock_vault (mut), reward_mint, token_program, system_program`, sau đó là `caller_program, escrow_auth, escrow`
+do Magic Action thêm vào.
+
+Sau khi hết hạn khoá, **beneficiary tự ký** `withdraw_unlocked(amounts: Vec<u64>)` để rút một phần hoặc toàn bộ:
+* Accounts: `reward_distributor (mut), beneficiary (signer), lock_vault (mut), destination_token_account (mut, đúng mint, owner bất kỳ), reward_mint, token_program`;
+  `remaining_accounts` = các `ClaimLock` PDA (writable), `amounts[i]` tương ứng với lock thứ `i`.
+* Điều kiện on-chain: 1–16 lock, không trùng lock, mỗi lock thuộc đúng beneficiary ký, `now >= unlock_at`,
+  `0 < amounts[i] <= amount - withdrawn`, tổng `>= 100 BONSAI` (`MIN_LOCK_WITHDRAW = 100_000_000_000`), chương trình không bị pause.
+* Chọn lock nào rút trước (FIFO) là quy tắc off-chain do bên dựng giao dịch quyết định (ví dụ botanika-core cho payout VND).
+* Phát event `LockWithdrawn { beneficiary, destination, total, locks, amounts, timestamp }`.
+
+Lưu ý: `claim_reward`/`batch_payout` (legacy, mặc định tắt) vẫn trả thẳng `token_vault → ví miner`;
+nếu bật lại qua `set_legacy_claims_enabled` thì các luồng này **bỏ qua cơ chế khoá**.
+
+## 🛠️ Quá Trình Nhận Thưởng Legacy (`claim_reward`, mặc định tắt)
+
+Khi `legacy_claims_enabled` được bật (đã nạp token vào Vault và đã có Merkle Root on-chain), các thợ đào (Miners) có thể nhận thưởng bằng cách gọi transaction `claim_reward` trên client của họ:
 
 1. Đọc dữ liệu chứng thực của miner từ `scripts/merkle-output.json` (phím tương ứng là `"MINER_PUBKEY:NODE_ID"`).
 2. Gửi lệnh `claimReward` với các tham số:
    * `node_id_hash`: Hash của ID node (dạng 32 bytes).
    * `cumulative_amount`: Tổng số lượng token tích lũy mà miner được nhận từ trước đến nay (dạng `u64`).
    * `proof`: Mảng các hash bytes chứng thực từ cây Merkle.
-3. Smart contract sẽ tự động kiểm tra chứng thực, so khớp lượng token đã claim trước đó và chuyển phần chênh lệch trực tiếp về ví của Miner.
+3. Smart contract sẽ tự động kiểm tra chứng thực, so khớp lượng token đã claim trước đó và chuyển phần chênh lệch trực tiếp về ví của Miner (không qua lock).
 
 ---
 
@@ -154,3 +180,4 @@ Khi hệ thống đã sẵn sàng (đã nạp token vào Vault và đã cập nh
 Smart contract cũng hỗ trợ tính năng **Withdraw Vault** để admin rút lại token chưa được claim từ vault về treasury nhằm mục đích hoàn trả quỹ hoặc tái phân bổ:
 * Gọi lệnh `withdraw_vault` ký bởi Authority đã cấu hình.
 * Truyền vào `amount` cần rút hoặc `u64::MAX` để rút toàn bộ số dư còn lại trong vault.
+* `withdraw_vault` chỉ chấp nhận `token_vault`; `lock_vault` (token của các claim đang khoá/đã mở khoá) không bao giờ rút được bằng lệnh này.

@@ -10,6 +10,7 @@ pub mod set_legacy_claims_enabled;
 pub mod unpause;
 pub mod update_root;
 pub mod withdraw_vault;
+pub mod withdraw_unlocked;
 
 pub use batch_payout::*;
 pub use claim_reward::*;
@@ -23,3 +24,4 @@ pub use set_legacy_claims_enabled::*;
 pub use unpause::*;
 pub use update_root::*;
 pub use withdraw_vault::*;
+pub use withdraw_unlocked::*;

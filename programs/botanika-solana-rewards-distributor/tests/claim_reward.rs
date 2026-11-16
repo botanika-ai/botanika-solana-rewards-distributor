@@ -576,6 +576,7 @@ async fn test_claim_rejected_when_legacy_claims_disabled_then_allowed_after_togg
     );
 
     enable_legacy_claims(&mut setup).await;
+    setup.context.refresh_blockhash().await;
     setup
         .context
         .process_transaction(&[claim_ix], &[&setup.miner])

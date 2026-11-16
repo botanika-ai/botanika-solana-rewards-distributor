@@ -43,12 +43,15 @@ async function main() {
     console.log(`Treasury Authority: ${state.treasuryAuthority.toBase58()}`);
     console.log(`Reward Mint:      ${state.rewardMint.toBase58()}`);
     console.log(`Token Vault:      ${state.tokenVault.toBase58()}`);
+    console.log(`Lock Vault:       ${state.lockVault.toBase58()}`);
     console.log(`Current Root Hex: 0x${Buffer.from(state.currentRoot).toString("hex")}`);
     console.log(`Current Root Arr: [${state.currentRoot.join(", ")}]`);
     console.log(`Epoch ID:         ${state.epochId.toString()}`);
     console.log(`Is Paused:        ${state.isPaused}`);
     console.log(`Total Claimed (self-serve): ${state.totalClaimed.toString()}`);
     console.log(`Total Batch Distributed:    ${state.totalBatchDistributed.toString()}`);
+    console.log(`Total Locked (finalize_claim):        ${state.totalLocked.toString()}`);
+    console.log(`Total Lock Withdrawn (withdraw_unlocked): ${state.totalLockWithdrawn.toString()}`);
     console.log("----------------------------------------\n");
 
   } catch (error) {

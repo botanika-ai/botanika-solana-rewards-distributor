@@ -25,6 +25,51 @@ fn entry_wrapper(
         .map_err(|e| e.into())
 }
 
+/// Address of MagicBlock's delegation program -- the program the
+/// `finalize_claim` `escrow` PDA is derived from.
+pub fn delegation_program_id() -> Pubkey {
+    Pubkey::new_from_array(ephemeral_rollups_sdk::id().to_bytes())
+}
+
+/// Test stand-in for the delegation program executing a Magic Action:
+/// `invoke_signed`s the wrapped instruction with the `escrow` PDA
+/// (`[EPHEMERAL_BALANCE_TAG, escrow_auth, ACTION_ESCROW_INDEX]`) as signer,
+/// which is exactly the signature a real Magic Action supplies and that no
+/// keypair can produce.
+///
+/// Data layout: `escrow_auth (32) | escrow_bump (1) | inner ix data`.
+/// Accounts: `[target_program, ...target ix accounts]`.
+fn mock_delegation_entry(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    data: &[u8],
+) -> std::result::Result<(), solana_sdk::program_error::ProgramError> {
+    let escrow_auth = Pubkey::try_from(&data[..32]).unwrap();
+    let bump = data[32];
+    let index = [botanika_solana_rewards_distributor::instructions::update_root::ACTION_ESCROW_INDEX];
+    let seeds: &[&[u8]] = &[
+        ephemeral_rollups_sdk::pda::EPHEMERAL_BALANCE_TAG,
+        escrow_auth.as_ref(),
+        &index,
+        &[bump],
+    ];
+    let escrow = Pubkey::create_program_address(seeds, &delegation_program_id()).unwrap();
+    let target = &accounts[0];
+    let ix = anchor_lang::solana_program::instruction::Instruction {
+        program_id: *target.key,
+        accounts: accounts[1..]
+            .iter()
+            .map(|ai| anchor_lang::solana_program::instruction::AccountMeta {
+                pubkey: *ai.key,
+                is_signer: ai.is_signer || *ai.key == escrow,
+                is_writable: ai.is_writable,
+            })
+            .collect(),
+        data: data[33..].to_vec(),
+    };
+    anchor_lang::solana_program::program::invoke_signed(&ix, accounts, &[seeds])
+}
+
 pub struct TestContext {
     pub inner: ProgramTestContext,
     pub program_id: Pubkey,
@@ -46,15 +91,62 @@ impl std::ops::DerefMut for TestContext {
 impl TestContext {
     pub async fn new() -> Self {
         let program_id = botanika_solana_rewards_distributor::ID;
-        let program_test = ProgramTest::new(
+        let mut program_test = ProgramTest::new(
             "botanika_solana_rewards_distributor",
             program_id,
             processor!(entry_wrapper),
+        );
+        program_test.add_program(
+            "mock_magicblock_delegation",
+            delegation_program_id(),
+            processor!(mock_delegation_entry),
         );
 
         let inner = program_test.start_with_context().await;
 
         Self { inner, program_id }
+    }
+
+    /// Moves the chain clock forward by `secs` and waits for a fresh
+    /// blockhash (see `refresh_blockhash`). `warp_to_slot` is avoided: it
+    /// re-verifies the accounts hash, which `set_account`-seeded accounts
+    /// make fail.
+    pub async fn warp_seconds(&mut self, secs: i64) {
+        let mut clock: Clock = self.banks_client.get_sysvar().await.unwrap();
+        clock.unix_timestamp += secs;
+        self.inner.set_sysvar(&clock);
+        self.refresh_blockhash().await;
+    }
+
+    /// Waits until the bank registers a new blockhash. Required before
+    /// re-sending a transaction identical to an earlier failed one: with the
+    /// same blockhash it has the same signature, and the banks server replays
+    /// the cached failure instead of executing it again.
+    pub async fn refresh_blockhash(&mut self) {
+        let current = self.banks_client.get_latest_blockhash().await.unwrap();
+        self.banks_client.get_new_latest_blockhash(&current).await.unwrap();
+    }
+
+    pub async fn now(&mut self) -> i64 {
+        let clock: Clock = self.banks_client.get_sysvar().await.unwrap();
+        clock.unix_timestamp
+    }
+
+    pub async fn token_balance(&mut self, account: Pubkey) -> u64 {
+        let acc = self.banks_client.get_account(account).await.unwrap().unwrap();
+        anchor_spl::token::TokenAccount::try_deserialize(&mut acc.data.as_slice())
+            .unwrap()
+            .amount
+    }
+
+    pub async fn reward_distributor(&mut self, pda: Pubkey) -> RewardDistributor {
+        let acc = self.banks_client.get_account(pda).await.unwrap().unwrap();
+        RewardDistributor::try_deserialize(&mut acc.data.as_slice()).unwrap()
+    }
+
+    pub async fn claim_lock(&mut self, pda: Pubkey) -> ClaimLock {
+        let acc = self.banks_client.get_account(pda).await.unwrap().unwrap();
+        ClaimLock::try_deserialize(&mut acc.data.as_slice()).unwrap()
     }
 
     /// Test-only shortcut: directly overwrites `RewardDistributor.current_root`/
@@ -211,6 +303,7 @@ pub struct SetupResult {
     pub authority: Keypair,
     pub reward_mint: Keypair,
     pub token_vault: Keypair,
+    pub lock_vault: Keypair,
     pub miner: Keypair,
     pub miner_token_account: Keypair,
     pub reward_distributor_pda: Pubkey,
@@ -240,6 +333,7 @@ pub async fn setup_test() -> SetupResult {
     let authority = Keypair::new();
     let reward_mint = Keypair::new();
     let token_vault = Keypair::new();
+    let lock_vault = Keypair::new();
     let miner = Keypair::new();
     let miner_token_account = Keypair::new();
 
@@ -268,6 +362,7 @@ pub async fn setup_test() -> SetupResult {
             reward_distributor: reward_distributor_pda,
             reward_mint: reward_mint.pubkey(),
             token_vault: token_vault.pubkey(),
+            lock_vault: lock_vault.pubkey(),
             payer: context.payer.pubkey(),
             token_program: anchor_spl::token::ID,
             system_program: system_program::ID,
@@ -277,7 +372,7 @@ pub async fn setup_test() -> SetupResult {
         }.data(),
     };
 
-    context.process_transaction(&[initialize_ix], &[&token_vault]).await.unwrap();
+    context.process_transaction(&[initialize_ix], &[&token_vault, &lock_vault]).await.unwrap();
 
     let payer = Keypair::from_bytes(&context.payer.to_bytes()).unwrap();
     context.mint_to(&reward_mint.pubkey(), &token_vault.pubkey(), &payer, 10000).await.unwrap();
@@ -288,9 +383,162 @@ pub async fn setup_test() -> SetupResult {
         authority,
         reward_mint,
         token_vault,
+        lock_vault,
         miner,
         miner_token_account,
         reward_distributor_pda,
+    }
+}
+
+/// 1 BONSAI in base units (9 decimals).
+pub const BONSAI: u64 = 1_000_000_000;
+
+/// The Magic Action `escrow` PDA (and bump) for `escrow_auth`, derived from
+/// the delegation program exactly as `finalize_claim`'s `address`
+/// constraint does.
+pub fn escrow_pda(escrow_auth: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            ephemeral_rollups_sdk::pda::EPHEMERAL_BALANCE_TAG,
+            escrow_auth.as_ref(),
+            &[botanika_solana_rewards_distributor::instructions::update_root::ACTION_ESCROW_INDEX],
+        ],
+        &delegation_program_id(),
+    )
+}
+
+pub fn claim_receipt_pda(
+    program_id: &Pubkey,
+    beneficiary: &Pubkey,
+    node_id_hash: &[u8; 32],
+    wallet_binding_id: u64,
+    claim_nonce: u64,
+) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            ClaimReceipt::SEED,
+            beneficiary.as_ref(),
+            node_id_hash,
+            &wallet_binding_id.to_le_bytes(),
+            &claim_nonce.to_le_bytes(),
+        ],
+        program_id,
+    )
+    .0
+}
+
+pub fn claim_lock_pda(program_id: &Pubkey, claim_receipt: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[ClaimLock::SEED, claim_receipt.as_ref()], program_id).0
+}
+
+/// Prepares `setup` for real `finalize_claim` executions: a published
+/// settlement `settlement_id`, a funded (system-owned) escrow PDA to pay
+/// the receipt/lock rent, and `extra_vault_amount` more tokens in
+/// `token_vault`.
+pub async fn prepare_finalize(setup: &mut SetupResult, settlement_id: u64, extra_vault_amount: u64) {
+    let pda = setup.reward_distributor_pda;
+    setup.context.set_reward_distributor_root(pda, [7u8; 32], settlement_id).await;
+
+    let (escrow, _) = escrow_pda(&setup.authority.pubkey());
+    setup.context.set_account(
+        &escrow,
+        &AccountSharedData::new(10_000_000_000, 0, &system_program::ID),
+    );
+
+    let payer = Keypair::from_bytes(&setup.context.payer.to_bytes()).unwrap();
+    let mint = setup.reward_mint.pubkey();
+    let vault = setup.token_vault.pubkey();
+    setup.context.mint_to(&mint, &vault, &payer, extra_vault_amount).await.unwrap();
+}
+
+/// `finalize_claim` wrapped in the mock delegation program so the escrow
+/// PDA (of `finalize_claim_authority` == `setup.authority`) signs it.
+/// Returns `(claim_receipt, claim_lock)` PDAs.
+#[allow(clippy::too_many_arguments)]
+pub fn finalize_claim_via_escrow_ix(
+    setup: &SetupResult,
+    claim_nonce: u64,
+    beneficiary: Pubkey,
+    node_id_hash: [u8; 32],
+    wallet_binding_id: u64,
+    amount: u64,
+    settlement_id: u64,
+    lock_vault: Pubkey,
+) -> (Instruction, Pubkey, Pubkey) {
+    let program_id = setup.context.program_id;
+    let escrow_auth = setup.authority.pubkey();
+    let (escrow, bump) = escrow_pda(&escrow_auth);
+    let claim_receipt =
+        claim_receipt_pda(&program_id, &beneficiary, &node_id_hash, wallet_binding_id, claim_nonce);
+    let claim_lock = claim_lock_pda(&program_id, &claim_receipt);
+
+    let inner_accounts = botanika_solana_rewards_distributor::accounts::FinalizeClaim {
+        reward_distributor: setup.reward_distributor_pda,
+        settlement: settlement_pda(settlement_id, &program_id),
+        claim_receipt,
+        claim_lock,
+        token_vault: setup.token_vault.pubkey(),
+        lock_vault,
+        reward_mint: setup.reward_mint.pubkey(),
+        token_program: anchor_spl::token::ID,
+        system_program: system_program::ID,
+        caller_program: delegation_program_id(),
+        escrow_auth,
+        escrow,
+    }
+    .to_account_metas(None);
+    let inner_data = botanika_solana_rewards_distributor::instruction::FinalizeClaim {
+        claim_nonce,
+        beneficiary,
+        node_id_hash,
+        wallet_binding_id,
+        amount,
+        reward_state_hash: [3u8; 32],
+        settlement_id,
+    }
+    .data();
+
+    let mut accounts = vec![solana_sdk::instruction::AccountMeta::new_readonly(program_id, false)];
+    // The outer tx cannot sign for the escrow PDA; the mock program adds
+    // that signature via `invoke_signed`.
+    accounts.extend(inner_accounts.into_iter().map(|mut m| {
+        if m.pubkey == escrow {
+            m.is_signer = false;
+        }
+        m
+    }));
+    let mut data = escrow_auth.to_bytes().to_vec();
+    data.push(bump);
+    data.extend(inner_data);
+
+    (
+        Instruction { program_id: delegation_program_id(), accounts, data },
+        claim_receipt,
+        claim_lock,
+    )
+}
+
+pub fn withdraw_unlocked_ix(
+    setup: &SetupResult,
+    beneficiary: Pubkey,
+    destination: Pubkey,
+    locks: &[Pubkey],
+    amounts: Vec<u64>,
+) -> Instruction {
+    let mut accounts = botanika_solana_rewards_distributor::accounts::WithdrawUnlocked {
+        reward_distributor: setup.reward_distributor_pda,
+        beneficiary,
+        lock_vault: setup.lock_vault.pubkey(),
+        destination_token_account: destination,
+        reward_mint: setup.reward_mint.pubkey(),
+        token_program: anchor_spl::token::ID,
+    }
+    .to_account_metas(None);
+    accounts.extend(locks.iter().map(|k| solana_sdk::instruction::AccountMeta::new(*k, false)));
+    Instruction {
+        program_id: setup.context.program_id,
+        accounts,
+        data: botanika_solana_rewards_distributor::instruction::WithdrawUnlocked { amounts }.data(),
     }
 }
 

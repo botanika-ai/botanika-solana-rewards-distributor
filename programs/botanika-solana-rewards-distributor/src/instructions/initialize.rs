@@ -44,6 +44,16 @@ pub struct Initialize<'info> {
     )]
     pub token_vault: InterfaceAccount<'info, TokenAccount>,
 
+    /// Separate vault for locked claims (see `RewardDistributor.lock_vault`);
+    /// same init pattern as `token_vault`, so it is a distinct account.
+    #[account(
+        init,
+        payer = payer,
+        token::mint = reward_mint,
+        token::authority = reward_distributor,
+    )]
+    pub lock_vault: InterfaceAccount<'info, TokenAccount>,
+
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -89,6 +99,9 @@ pub fn initialize_handler(
     reward_distributor.last_updated_at = Clock::get()?.unix_timestamp;
     reward_distributor.total_claimed = 0;
     reward_distributor.total_batch_distributed = 0;
+    reward_distributor.lock_vault = ctx.accounts.lock_vault.key();
+    reward_distributor.total_locked = 0;
+    reward_distributor.total_lock_withdrawn = 0;
 
     Ok(())
 }

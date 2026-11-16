@@ -81,8 +81,11 @@ pub mod botanika_solana_rewards_distributor {
 
     /// Target claim flow (Design Freeze v1 §3.10/§6.4): signer is the
     /// escrow PDA a Magic Action from `botanika-magicblock-contracts`
-    /// signs for, not a human keypair. `claim_reward`/`batch_payout` are
-    /// the legacy cold fallback, disabled unless `legacy_claims_enabled`.
+    /// signs for, not a human keypair. Locks the claim (`token_vault ->
+    /// lock_vault`, new `ClaimLock` with a 60-day `unlock_at`) instead of
+    /// paying the beneficiary. `claim_reward`/`batch_payout` are the legacy
+    /// cold fallback, disabled unless `legacy_claims_enabled` (they bypass
+    /// the lock).
     #[allow(clippy::too_many_arguments)]
     pub fn finalize_claim(
         ctx: Context<FinalizeClaim>,
@@ -113,5 +116,15 @@ pub mod botanika_solana_rewards_distributor {
         enabled: bool,
     ) -> Result<()> {
         set_legacy_claims_enabled_handler(ctx, enabled)
+    }
+
+    /// Beneficiary-signed release of unlocked `ClaimLock` funds
+    /// `lock_vault -> destination_token_account`; `remaining_accounts` are
+    /// the `ClaimLock` PDAs matching `amounts` index-by-index.
+    pub fn withdraw_unlocked<'info>(
+        ctx: Context<'_, '_, 'info, 'info, WithdrawUnlocked<'info>>,
+        amounts: Vec<u64>,
+    ) -> Result<()> {
+        withdraw_unlocked_handler(ctx, amounts)
     }
 }

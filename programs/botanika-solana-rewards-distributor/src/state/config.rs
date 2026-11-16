@@ -31,13 +31,23 @@ pub struct RewardDistributor {
     /// Cumulative amount paid out via authority-driven batch_payout.
     pub total_batch_distributed: u64,
     /// Gates the legacy Merkle payout paths (`claim_reward`, `batch_payout`).
-    /// Occupies what was the first `_reserved` byte, so existing accounts
-    /// read it as `false`: the MagicBlock `finalize_claim` flow is the only
-    /// payout path unless `admin_authority` re-enables it via
-    /// `set_legacy_claims_enabled`.
+    /// Zero-initialized (`false`) at `initialize`: the MagicBlock
+    /// `finalize_claim` flow is the only payout path unless
+    /// `admin_authority` re-enables it via `set_legacy_claims_enabled`.
+    /// Those legacy paths pay `token_vault -> miner` directly and therefore
+    /// bypass the per-claim `ClaimLock`.
     pub legacy_claims_enabled: bool,
-    #[max_len(63)]
-    pub _reserved: [u8; 63],
+    /// Holds every finalized claim until its `ClaimLock.unlock_at`
+    /// (`finalize_claim` moves `token_vault -> lock_vault`). Authority is
+    /// this PDA; only `withdraw_unlocked` (signed by the lock's beneficiary)
+    /// moves funds out -- `withdraw_vault` cannot touch it.
+    pub lock_vault: Pubkey,
+    /// Cumulative amount moved into `lock_vault` by `finalize_claim`.
+    pub total_locked: u64,
+    /// Cumulative amount moved out of `lock_vault` by `withdraw_unlocked`.
+    pub total_lock_withdrawn: u64,
+    #[max_len(15)]
+    pub _reserved: [u8; 15],
 }
 
 impl RewardDistributor {

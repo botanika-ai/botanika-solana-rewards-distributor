@@ -20,6 +20,7 @@ async fn test_initialize() {
     let authority = Keypair::new();
     let reward_mint = Keypair::new();
     let token_vault = Keypair::new();
+    let lock_vault = Keypair::new();
 
     context.create_mint(&reward_mint, &context.payer.pubkey(), 9).await.unwrap();
 
@@ -37,6 +38,7 @@ async fn test_initialize() {
             reward_distributor: reward_distributor_pda,
             reward_mint: reward_mint.pubkey(),
             token_vault: token_vault.pubkey(),
+            lock_vault: lock_vault.pubkey(),
             payer: context.payer.pubkey(),
             token_program: anchor_spl::token::ID,
             system_program: system_program::ID,
@@ -44,7 +46,7 @@ async fn test_initialize() {
         data: botanika_solana_rewards_distributor::instruction::Initialize { authorities }.data(),
     };
 
-    context.process_transaction(&[initialize_ix], &[&token_vault]).await.unwrap();
+    context.process_transaction(&[initialize_ix], &[&token_vault, &lock_vault]).await.unwrap();
 
     // Verify initial state
     let account = context.banks_client.get_account(reward_distributor_pda).await.unwrap().unwrap();
@@ -67,6 +69,18 @@ async fn test_initialize() {
     assert_eq!(data.is_paused, false);
     assert_eq!(data.total_claimed, 0);
     assert_eq!(data.total_batch_distributed, 0);
+    assert_eq!(data.lock_vault, lock_vault.pubkey());
+    assert_ne!(data.lock_vault, data.token_vault);
+    assert_eq!(data.total_locked, 0);
+    assert_eq!(data.total_lock_withdrawn, 0);
+
+    // lock_vault is a token account of the reward mint owned by the PDA.
+    let lock_vault_account = context.banks_client.get_account(lock_vault.pubkey()).await.unwrap().unwrap();
+    let lock_vault_data =
+        anchor_spl::token::TokenAccount::try_deserialize(&mut lock_vault_account.data.as_slice()).unwrap();
+    assert_eq!(lock_vault_data.mint, reward_mint.pubkey());
+    assert_eq!(lock_vault_data.owner, reward_distributor_pda);
+    assert_eq!(lock_vault_data.amount, 0);
 }
 
 /// Regression guard: `finalize_claim_authority` previously defaulted
@@ -82,6 +96,7 @@ async fn test_initialize_rejects_default_finalize_claim_authority() {
     let authority = Keypair::new();
     let reward_mint = Keypair::new();
     let token_vault = Keypair::new();
+    let lock_vault = Keypair::new();
 
     context.create_mint(&reward_mint, &context.payer.pubkey(), 9).await.unwrap();
 
@@ -96,6 +111,7 @@ async fn test_initialize_rejects_default_finalize_claim_authority() {
             reward_distributor: reward_distributor_pda,
             reward_mint: reward_mint.pubkey(),
             token_vault: token_vault.pubkey(),
+            lock_vault: lock_vault.pubkey(),
             payer: context.payer.pubkey(),
             token_program: anchor_spl::token::ID,
             system_program: system_program::ID,
@@ -104,7 +120,7 @@ async fn test_initialize_rejects_default_finalize_claim_authority() {
         data: botanika_solana_rewards_distributor::instruction::Initialize { authorities }.data(),
     };
 
-    let result = context.process_transaction(&[initialize_ix], &[&token_vault]).await;
+    let result = context.process_transaction(&[initialize_ix], &[&token_vault, &lock_vault]).await;
     assert!(result.is_err(), "the zero pubkey must be rejected, not silently fall back to admin_authority");
 }
 
@@ -122,6 +138,7 @@ async fn test_initialize_rejects_default_admin_authority() {
     let authority = Keypair::new();
     let reward_mint = Keypair::new();
     let token_vault = Keypair::new();
+    let lock_vault = Keypair::new();
 
     context.create_mint(&reward_mint, &context.payer.pubkey(), 9).await.unwrap();
 
@@ -136,6 +153,7 @@ async fn test_initialize_rejects_default_admin_authority() {
             reward_distributor: reward_distributor_pda,
             reward_mint: reward_mint.pubkey(),
             token_vault: token_vault.pubkey(),
+            lock_vault: lock_vault.pubkey(),
             payer: context.payer.pubkey(),
             token_program: anchor_spl::token::ID,
             system_program: system_program::ID,
@@ -144,6 +162,6 @@ async fn test_initialize_rejects_default_admin_authority() {
         data: botanika_solana_rewards_distributor::instruction::Initialize { authorities }.data(),
     };
 
-    let result = context.process_transaction(&[initialize_ix], &[&token_vault]).await;
+    let result = context.process_transaction(&[initialize_ix], &[&token_vault, &lock_vault]).await;
     assert!(result.is_err(), "a zero admin_authority must be rejected -- it would brick set_authority itself");
 }

@@ -66,10 +66,14 @@ async function main() {
     );
 
     const tokenVaultKeypair = Keypair.generate();
+    // Separate vault holding finalized claims until each ClaimLock's
+    // unlock_at (60 days); only withdraw_unlocked moves funds out of it.
+    const lockVaultKeypair = Keypair.generate();
 
     console.log("Deriving PDAs...");
     console.log(`reward_distributor: ${rewardDistributorPda.toBase58()}`);
     console.log(`token_vault: ${tokenVaultKeypair.publicKey.toBase58()}`);
+    console.log(`lock_vault: ${lockVaultKeypair.publicKey.toBase58()}`);
 
     // P0-RWD-02: roles are separated on-chain so a single compromised key
     // cannot move the root, pause the program, AND sweep the vault. This
@@ -97,22 +101,25 @@ async function main() {
         rewardDistributor: rewardDistributorPda,
         rewardMint: tokenMint,
         tokenVault: tokenVaultKeypair.publicKey,
+        lockVault: lockVaultKeypair.publicKey,
         payer: walletKeypair.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
-      .signers([tokenVaultKeypair])
+      .signers([tokenVaultKeypair, lockVaultKeypair])
       .rpc();
 
     console.log("----------------------------------------");
     console.log(`REWARD_DISTRIBUTOR_PDA = ${rewardDistributorPda.toBase58()}`);
     console.log(`TOKEN_VAULT = ${tokenVaultKeypair.publicKey.toBase58()}`);
+    console.log(`LOCK_VAULT = ${lockVaultKeypair.publicKey.toBase58()}`);
     console.log(`TX_SIGNATURE = ${tx}`);
     console.log("----------------------------------------");
 
     config.REWARD_DISTRIBUTOR_PDA = rewardDistributorPda.toBase58();
     config.TOKEN_VAULT = tokenVaultKeypair.publicKey.toBase58();
     config.TOKEN_VAULT_SECRET = Array.from(tokenVaultKeypair.secretKey);
+    config.LOCK_VAULT = lockVaultKeypair.publicKey.toBase58();
     config.PROGRAM_ID = programId.toBase58();
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     console.log(`Updated config saved to ${configPath}`);

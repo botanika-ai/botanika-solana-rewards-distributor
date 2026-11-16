@@ -67,6 +67,18 @@ pub struct ClaimFinalized {
     pub amount: u64,
     pub settlement_id: u64,
     pub timestamp: i64,
+    pub claim_lock: Pubkey,
+    pub unlock_at: i64,
+}
+
+#[event]
+pub struct LockWithdrawn {
+    pub beneficiary: Pubkey,
+    pub destination: Pubkey,
+    pub total: u64,
+    pub locks: Vec<Pubkey>,
+    pub amounts: Vec<u64>,
+    pub timestamp: i64,
 }
 
 #[event]

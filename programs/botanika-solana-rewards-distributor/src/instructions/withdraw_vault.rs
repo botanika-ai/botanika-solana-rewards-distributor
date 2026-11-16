@@ -10,6 +10,9 @@ use crate::state::RewardDistributor;
 /// this instruction moved funds out of the exact same vault as those three
 /// with no pause check at all, so pausing the program never actually
 /// stopped `treasury_authority` from sweeping it.
+///
+/// Only ever sweeps `token_vault`: `lock_vault` holds beneficiaries'
+/// finalized claims and is released solely by `withdraw_unlocked`.
 #[derive(Accounts)]
 pub struct WithdrawVault<'info> {
     #[account(
@@ -23,7 +26,8 @@ pub struct WithdrawVault<'info> {
 
     #[account(
         mut,
-        address = reward_distributor.token_vault,
+        address = reward_distributor.token_vault @ RewardError::InvalidVault,
+        constraint = token_vault.key() != reward_distributor.lock_vault @ RewardError::InvalidLockVault,
     )]
     pub token_vault: InterfaceAccount<'info, TokenAccount>,
 

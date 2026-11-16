@@ -104,6 +104,7 @@ async function main() {
 
   const [rewardDistributorPda] = PublicKey.findProgramAddressSync([Buffer.from("reward_distributor")], programId);
   const tokenVaultKeypair = Keypair.generate();
+  const lockVaultKeypair = Keypair.generate();
 
   console.log("----------------------------------------");
   console.log("AUTHORITIES FOR THIS DEPLOYMENT:");
@@ -131,16 +132,18 @@ async function main() {
       rewardDistributor: rewardDistributorPda,
       rewardMint: tokenMint,
       tokenVault: tokenVaultKeypair.publicKey,
+      lockVault: lockVaultKeypair.publicKey,
       payer: deployKeypair.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: anchor.web3.SystemProgram.programId,
     })
-    .signers([tokenVaultKeypair])
+    .signers([tokenVaultKeypair, lockVaultKeypair])
     .rpc();
 
   console.log("----------------------------------------");
   console.log(`REWARD_DISTRIBUTOR_PDA = ${rewardDistributorPda.toBase58()}`);
   console.log(`TOKEN_VAULT = ${tokenVaultKeypair.publicKey.toBase58()}`);
+  console.log(`LOCK_VAULT = ${lockVaultKeypair.publicKey.toBase58()}`);
   console.log(`TX_SIGNATURE = ${tx}`);
   console.log("----------------------------------------");
   console.log(
@@ -151,6 +154,7 @@ async function main() {
   config.REWARD_DISTRIBUTOR_PDA = rewardDistributorPda.toBase58();
   config.TOKEN_VAULT = tokenVaultKeypair.publicKey.toBase58();
   config.TOKEN_VAULT_SECRET = Array.from(tokenVaultKeypair.secretKey);
+  config.LOCK_VAULT = lockVaultKeypair.publicKey.toBase58();
   config.PROGRAM_ID = programId.toBase58();
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   console.log(`Updated config saved to ${configPath}`);
