@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-botanika_solana_rewards_distributor = "GqXEoEGQAMKePyu3PfYnC2tPZKBGqYtsBiE3gU66QDkJ"
+botanika_solana_rewards_distributor = "ABqbuKRLFJyshpVj85yNBXqhX1iae2qvTFRYq3VUGh7a"
 
 [programs.localnet]
 botanika_solana_rewards_distributor = "EgXM56PxY7JNSDwwBu2S4LXQV8JMJaJcQq2KTJzg5RQg"
