@@ -242,6 +242,28 @@ async fn test_withdraw_wrong_lock_vault_fails() {
     assert_program_error(result, RewardError::InvalidLockVault);
 }
 
+#[tokio::test]
+async fn test_withdraw_to_lock_vault_fails() {
+    let mut f = lock_fixture().await;
+    let beneficiary = Keypair::from_bytes(&f.beneficiary.to_bytes()).unwrap();
+    f.setup.context.warp_seconds(LOCK_DURATION_SECS).await;
+    let lock_vault = f.setup.lock_vault.pubkey();
+    let ix = withdraw_unlocked_ix(&f.setup, beneficiary.pubkey(), lock_vault, &[f.lock_a], vec![LOCK_A]);
+    let result = f.setup.context.process_transaction(&[ix], &[&beneficiary]).await;
+    assert_program_error(result, RewardError::InvalidWithdrawDestination);
+}
+
+#[tokio::test]
+async fn test_withdraw_to_token_vault_fails() {
+    let mut f = lock_fixture().await;
+    let beneficiary = Keypair::from_bytes(&f.beneficiary.to_bytes()).unwrap();
+    f.setup.context.warp_seconds(LOCK_DURATION_SECS).await;
+    let token_vault = f.setup.token_vault.pubkey();
+    let ix = withdraw_unlocked_ix(&f.setup, beneficiary.pubkey(), token_vault, &[f.lock_a], vec![LOCK_A]);
+    let result = f.setup.context.process_transaction(&[ix], &[&beneficiary]).await;
+    assert_program_error(result, RewardError::InvalidWithdrawDestination);
+}
+
 /// `withdraw_vault` (treasury sweep) must never be able to move locked funds.
 #[tokio::test]
 async fn test_withdraw_vault_cannot_drain_lock_vault() {

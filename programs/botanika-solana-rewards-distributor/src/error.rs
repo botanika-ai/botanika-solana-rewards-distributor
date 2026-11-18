@@ -60,4 +60,6 @@ pub enum RewardError {
     InvalidLockVault,
     #[msg("Too many claim locks in one withdraw_unlocked (max 16)")]
     TooManyLocks,
+    #[msg("withdraw_unlocked destination must not be the distributor's lock_vault or token_vault")]
+    InvalidWithdrawDestination,
 }

@@ -12,7 +12,8 @@ use crate::state::{ClaimLock, RewardDistributor, MAX_LOCKS_PER_WITHDRAW, MIN_LOC
 /// `unlock_at`; the sum must reach `MIN_LOCK_WITHDRAW`. Which locks to
 /// drain first (FIFO) is decided off-chain by whoever builds the tx.
 /// `destination_token_account` may be owned by anyone (e.g. the Botanika
-/// treasury for VND payouts signed by the custody beneficiary wallet).
+/// treasury for VND payouts signed by the custody beneficiary wallet), but
+/// never the distributor's own `lock_vault` / `token_vault`.
 #[derive(Accounts)]
 pub struct WithdrawUnlocked<'info> {
     #[account(
@@ -36,6 +37,8 @@ pub struct WithdrawUnlocked<'info> {
     #[account(
         mut,
         token::mint = reward_mint,
+        constraint = destination_token_account.key() != reward_distributor.lock_vault @ RewardError::InvalidWithdrawDestination,
+        constraint = destination_token_account.key() != reward_distributor.token_vault @ RewardError::InvalidWithdrawDestination,
     )]
     pub destination_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
