@@ -1,9 +1,17 @@
 use anchor_lang::prelude::*;
 
-/// Every finalized claim is locked for this long (60 days, chain clock)
-/// before its beneficiary can move it out via `withdraw_unlocked`.
+/// Every finalized claim is locked for this long (chain clock) before its
+/// beneficiary can move it out via `withdraw_unlocked`: 60 days in production.
+/// Local and devnet (dev) builds use the `short-lock` feature (5 minutes) so
+/// claim -> withdraw can be tested end to end
+/// (`anchor build -- --features short-lock`); reward-service's
+/// `CLAIM_LOCK_DURATION_SECS` must equal whichever value is deployed.
+#[cfg(not(feature = "short-lock"))]
 #[constant]
 pub const LOCK_DURATION_SECS: i64 = 5_184_000;
+#[cfg(feature = "short-lock")]
+#[constant]
+pub const LOCK_DURATION_SECS: i64 = 300;
 
 /// Minimum total (sum of `amounts`) a single `withdraw_unlocked`
 /// instruction must move: 100 BONSAI at 9 decimals.

@@ -147,6 +147,13 @@ npx ts-node scripts/view-state.ts
    (seed `["claim_lock", claim_receipt]`) với `unlock_at = locked_at + 5_184_000` giây (60 ngày, theo clock của chain).
 3. Cộng `RewardDistributor.total_locked`.
 
+> **Lưu ý môi trường:** mặc định `LOCK_DURATION_SECS = 5_184_000` (60 ngày, production).
+> Bản deploy **local và devnet (dev) cố ý khoá 300 giây (5 phút)** để test được trọn vòng claim → withdraw:
+> build bằng feature `short-lock` (`anchor build -- --features short-lock`). Devnet
+> `ABqbuKRLFJyshpVj85yNBXqhX1iae2qvTFRYq3VUGh7a` đang chạy bản 5 phút. `reward-service` phải đặt
+> `CLAIM_LOCK_DURATION_SECS=300` khi trỏ vào bản này (mặc định 60 ngày), nếu không listener từ chối mọi `ClaimFinalized`.
+> Core chỉ dùng lock đã mở khoá ít nhất 5 phút, nên trên dev một claim rút được sau khoảng 10 phút.
+
 Thứ tự account của `finalize_claim`: `reward_distributor (mut), settlement, claim_receipt (init), claim_lock (init),
 token_vault (mut), lock_vault (mut), reward_mint, token_program, system_program`, sau đó là `caller_program, escrow_auth, escrow`
 do Magic Action thêm vào.

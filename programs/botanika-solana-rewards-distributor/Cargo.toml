@@ -14,6 +14,8 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
+# Local/devnet test builds only: 5-minute claim lock instead of 60 days.
+short-lock = []
 idl-build = [
     "anchor-lang/idl-build",
     "anchor-spl/idl-build"

@@ -99,7 +99,7 @@ async fn test_finalize_claim_locks_into_lock_vault() {
     assert_eq!(lock.withdrawn, 0);
     assert_eq!(lock.locked_at, now);
     assert_eq!(lock.unlock_at, now + LOCK_DURATION_SECS);
-    assert_eq!(LOCK_DURATION_SECS, 5_184_000);
+    assert_eq!(LOCK_DURATION_SECS, if cfg!(feature = "short-lock") { 300 } else { 5_184_000 });
     assert_eq!(lock.claim_receipt, claim_receipt);
 
     let receipt_account = setup.context.banks_client.get_account(claim_receipt).await.unwrap().unwrap();
